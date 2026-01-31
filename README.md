@@ -34,7 +34,7 @@ openclaw plugins install ./gewe-openclaw.tgz
 
 ## 配置
 
-插件配置放在 `~/.openclaw/openclaw.json` 的 `channels.gewe`，并确保插件开启：
+插件配置放在 `~/.openclaw/openclaw.json` 的 `channels.gewe-openclaw`，并确保插件开启：
 
 ```json5
 {
@@ -44,7 +44,7 @@ openclaw plugins install ./gewe-openclaw.tgz
     }
   },
   "channels": {
-    "gewe": {
+    "gewe-openclaw": {
       "enabled": true,
       "apiBaseUrl": "https://www.geweapi.com",
       "token": "<gewe-token>",
@@ -86,14 +86,14 @@ OpenClaw 支持外部插件目录（catalog）。放置到以下路径即可被 
       "name": "gewe-openclaw",
       "openclaw": {
         "channel": {
-          "id": "gewe",
+          "id": "gewe-openclaw",
           "label": "GeWe",
           "selectionLabel": "WeChat (GeWe)",
           "detailLabel": "WeChat (GeWe)",
-          "docsPath": "/channels/gewe",
-          "docsLabel": "gewe",
+          "docsPath": "/channels/gewe-openclaw",
+          "docsLabel": "gewe-openclaw",
           "blurb": "WeChat channel via GeWe API and webhook callbacks.",
-          "aliases": ["wechat", "wx", "gewe"],
+          "aliases": ["gewe-openclaw", "gewe", "wechat", "wx"],
           "order": 72,
           "quickstartAllowFrom": true
         },

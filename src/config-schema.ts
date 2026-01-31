@@ -81,25 +81,27 @@ export const GeweAccountSchemaBase = z
   });
 
 export const GeweAccountSchema = GeweAccountSchemaBase.superRefine((value, ctx) => {
+  const pathHint = "channels.gewe-openclaw";
   requireOpenAllowFrom({
     policy: value.dmPolicy,
     allowFrom: value.allowFrom,
     ctx,
     path: ["allowFrom"],
     message:
-      'channels.gewe.dmPolicy="open" requires channels.gewe.allowFrom to include "*"',
+      `${pathHint}.dmPolicy="open" requires ${pathHint}.allowFrom to include "*"`,
   });
 });
 
 export const GeweConfigSchema = GeweAccountSchemaBase.extend({
   accounts: z.record(z.string(), GeweAccountSchema.optional()).optional(),
 }).superRefine((value, ctx) => {
+  const pathHint = "channels.gewe-openclaw";
   requireOpenAllowFrom({
     policy: value.dmPolicy,
     allowFrom: value.allowFrom,
     ctx,
     path: ["allowFrom"],
     message:
-      'channels.gewe.dmPolicy="open" requires channels.gewe.allowFrom to include "*"',
+      `${pathHint}.dmPolicy="open" requires ${pathHint}.allowFrom to include "*"`,
   });
 });

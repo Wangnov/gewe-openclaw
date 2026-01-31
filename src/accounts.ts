@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 
 import { DEFAULT_ACCOUNT_ID, normalizeAccountId } from "openclaw/plugin-sdk";
 
+import { CHANNEL_CONFIG_KEY } from "./constants.js";
 import type { CoreConfig, GeweAccountConfig, GeweAppIdSource, GeweTokenSource } from "./types.js";
 
 const DEFAULT_API_BASE_URL = "http://api.geweapi.com";
@@ -18,7 +19,7 @@ export type ResolvedGeweAccount = {
 };
 
 function listConfiguredAccountIds(cfg: CoreConfig): string[] {
-  const accounts = cfg.channels?.gewe?.accounts;
+  const accounts = cfg.channels?.[CHANNEL_CONFIG_KEY]?.accounts;
   if (!accounts || typeof accounts !== "object") return [];
   const ids = new Set<string>();
   for (const key of Object.keys(accounts)) {
@@ -41,7 +42,7 @@ export function resolveDefaultGeweAccountId(cfg: CoreConfig): string {
 }
 
 function resolveAccountConfig(cfg: CoreConfig, accountId: string): GeweAccountConfig | undefined {
-  const accounts = cfg.channels?.gewe?.accounts;
+  const accounts = cfg.channels?.[CHANNEL_CONFIG_KEY]?.accounts;
   if (!accounts || typeof accounts !== "object") return undefined;
   const direct = accounts[accountId] as GeweAccountConfig | undefined;
   if (direct) return direct;
@@ -51,7 +52,7 @@ function resolveAccountConfig(cfg: CoreConfig, accountId: string): GeweAccountCo
 }
 
 function mergeGeweAccountConfig(cfg: CoreConfig, accountId: string): GeweAccountConfig {
-  const { accounts: _ignored, ...base } = (cfg.channels?.gewe ?? {}) as GeweAccountConfig & {
+  const { accounts: _ignored, ...base } = (cfg.channels?.[CHANNEL_CONFIG_KEY] ?? {}) as GeweAccountConfig & {
     accounts?: unknown;
   };
   const account = resolveAccountConfig(cfg, accountId) ?? {};
@@ -117,7 +118,7 @@ export function resolveGeweAccount(params: {
   accountId?: string | null;
 }): ResolvedGeweAccount {
   const hasExplicitAccountId = Boolean(params.accountId?.trim());
-  const baseEnabled = params.cfg.channels?.gewe?.enabled !== false;
+  const baseEnabled = params.cfg.channels?.[CHANNEL_CONFIG_KEY]?.enabled !== false;
 
   const resolve = (accountId: string): ResolvedGeweAccount => {
     const merged = mergeGeweAccountConfig(params.cfg, accountId);
@@ -161,4 +162,3 @@ export function listEnabledGeweAccounts(cfg: CoreConfig): ResolvedGeweAccount[] 
     .map((accountId) => resolveGeweAccount({ cfg, accountId }))
     .filter((account) => account.enabled);
 }
-

@@ -67,7 +67,7 @@ export type GeweConfig = {
 
 export type CoreConfig = {
   channels?: {
-    gewe?: GeweConfig;
+    "gewe-openclaw"?: GeweConfig;
   };
   [key: string]: unknown;
 };

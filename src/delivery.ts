@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 
 import type { OpenClawConfig, ReplyPayload } from "openclaw/plugin-sdk";
 import { extractOriginalFilename, extensionForMime } from "openclaw/plugin-sdk";
+import { CHANNEL_ID } from "./constants.js";
 import { getGeweRuntime } from "./runtime.js";
 import {
   sendFileGewe,
@@ -97,8 +98,10 @@ function resolveMediaMaxBytes(account: ResolvedGeweAccount): number {
 }
 
 function resolveGeweData(payload: ReplyPayload): GeweChannelData | undefined {
-  const data = payload.channelData as { gewe?: GeweChannelData } | undefined;
-  return data?.gewe;
+  const data = payload.channelData as
+    | { "gewe-openclaw"?: GeweChannelData; gewe?: GeweChannelData }
+    | undefined;
+  return data?.[CHANNEL_ID] ?? data?.gewe;
 }
 
 function isSilkAudio(opts: { contentType?: string; fileName?: string }): boolean {
@@ -145,7 +148,7 @@ async function probeVideoDurationSeconds(params: {
   sourcePath: string;
 }): Promise<number | null> {
   const core = getGeweRuntime();
-  const logger = core.logging.getChildLogger({ channel: "gewe", module: "video" });
+  const logger = core.logging.getChildLogger({ channel: CHANNEL_ID, module: "video" });
   const ffmpegPath = resolveVideoFfmpegPath(params.account);
   const ffprobePath = resolveVideoFfprobePath(params.account, ffmpegPath);
   const args = [
@@ -180,7 +183,7 @@ async function generateVideoThumbBuffer(params: {
   sourcePath: string;
 }): Promise<Buffer | null> {
   const core = getGeweRuntime();
-  const logger = core.logging.getChildLogger({ channel: "gewe", module: "video" });
+  const logger = core.logging.getChildLogger({ channel: CHANNEL_ID, module: "video" });
   const ffmpegPath = resolveVideoFfmpegPath(params.account);
   const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "moltbot-gewe-video-"));
   const thumbPath = path.join(tmpDir, "thumb.png");
@@ -247,7 +250,7 @@ async function convertAudioToSilk(params: {
   sourcePath: string;
 }): Promise<{ buffer: Buffer; durationMs: number } | null> {
   const core = getGeweRuntime();
-  const logger = core.logging.getChildLogger({ channel: "gewe", module: "voice" });
+  const logger = core.logging.getChildLogger({ channel: CHANNEL_ID, module: "voice" });
   if (!params.account.config.voiceAutoConvert) return null;
 
   const sampleRate = resolveVoiceSampleRate(params.account);
@@ -441,7 +444,7 @@ async function resolveLinkThumbUrl(params: {
   thumbUrl?: string;
 }): Promise<string> {
   const core = getGeweRuntime();
-  const logger = core.logging.getChildLogger({ channel: "gewe", module: "thumb" });
+  const logger = core.logging.getChildLogger({ channel: CHANNEL_ID, module: "thumb" });
   const fallbackBuffer = await fs.readFile(DEFAULT_LINK_THUMB_PATH);
   const fallbackUrl = await stageThumbBuffer({
     account: params.account,
@@ -591,7 +594,7 @@ export async function deliverGewePayload(params: {
       thumbUrl,
     });
     core.channel.activity.record({
-      channel: "gewe",
+      channel: CHANNEL_ID,
       accountId: account.accountId,
       direction: "outbound",
     });
@@ -625,7 +628,7 @@ export async function deliverGewePayload(params: {
             voiceDuration: declaredDuration,
           });
           core.channel.activity.record({
-            channel: "gewe",
+            channel: CHANNEL_ID,
             accountId: account.accountId,
             direction: "outbound",
           });
@@ -657,7 +660,7 @@ export async function deliverGewePayload(params: {
             voiceDuration,
           });
           core.channel.activity.record({
-            channel: "gewe",
+            channel: CHANNEL_ID,
             accountId: account.accountId,
             direction: "outbound",
           });
@@ -674,7 +677,7 @@ export async function deliverGewePayload(params: {
         imgUrl: staged.publicUrl,
       });
       core.channel.activity.record({
-        channel: "gewe",
+        channel: CHANNEL_ID,
         accountId: account.accountId,
         direction: "outbound",
       });
@@ -683,7 +686,7 @@ export async function deliverGewePayload(params: {
     }
 
     if (!forceFile && kind === "video") {
-      const logger = core.logging.getChildLogger({ channel: "gewe", module: "video" });
+      const logger = core.logging.getChildLogger({ channel: CHANNEL_ID, module: "video" });
       const video = geweData?.video;
       let thumbUrl = video?.thumbUrl;
       const fallbackThumbUrl = account.config.videoThumbUrl?.trim() || undefined;
@@ -755,7 +758,7 @@ export async function deliverGewePayload(params: {
             videoDuration: Math.floor(videoDuration),
           });
           core.channel.activity.record({
-            channel: "gewe",
+            channel: CHANNEL_ID,
             accountId: account.accountId,
             direction: "outbound",
           });
@@ -780,7 +783,7 @@ export async function deliverGewePayload(params: {
               videoDuration: Math.floor(videoDuration),
             });
             core.channel.activity.record({
-              channel: "gewe",
+              channel: CHANNEL_ID,
               accountId: account.accountId,
               direction: "outbound",
             });
@@ -803,7 +806,7 @@ export async function deliverGewePayload(params: {
       fileName: fallbackName,
     });
     core.channel.activity.record({
-      channel: "gewe",
+      channel: CHANNEL_ID,
       accountId: account.accountId,
       direction: "outbound",
     });
@@ -814,7 +817,7 @@ export async function deliverGewePayload(params: {
   if (trimmedText) {
     const tableMode = core.channel.text.resolveMarkdownTableMode({
       cfg,
-      channel: "gewe",
+      channel: CHANNEL_ID,
       accountId: account.accountId,
     });
     const content = core.channel.text.convertMarkdownTables(trimmedText, tableMode);
@@ -825,7 +828,7 @@ export async function deliverGewePayload(params: {
       ats: geweData?.ats,
     });
     core.channel.activity.record({
-      channel: "gewe",
+      channel: CHANNEL_ID,
       accountId: account.accountId,
       direction: "outbound",
     });

@@ -15,6 +15,14 @@ import {
 
 import { resolveGeweAccount, resolveDefaultGeweAccountId, listGeweAccountIds } from "./accounts.js";
 import { GeweConfigSchema } from "./config-schema.js";
+import {
+  CHANNEL_ALIASES,
+  CHANNEL_CONFIG_KEY,
+  CHANNEL_DOCS_LABEL,
+  CHANNEL_DOCS_PATH,
+  CHANNEL_ID,
+  stripChannelPrefix,
+} from "./constants.js";
 import { deliverGewePayload } from "./delivery.js";
 import { monitorGeweProvider } from "./monitor.js";
 import { looksLikeGeweTargetId, normalizeGeweMessagingTarget } from "./normalize.js";
@@ -24,14 +32,14 @@ import { sendTextGewe } from "./send.js";
 import type { CoreConfig, ResolvedGeweAccount } from "./types.js";
 
 const meta = {
-  id: "gewe",
+  id: CHANNEL_ID,
   label: "GeWe",
   selectionLabel: "WeChat (GeWe)",
   detailLabel: "WeChat (GeWe)",
-  docsPath: "/channels/gewe",
-  docsLabel: "gewe",
+  docsPath: CHANNEL_DOCS_PATH,
+  docsLabel: CHANNEL_DOCS_LABEL,
   blurb: "WeChat channel via GeWe API and webhook callbacks.",
-  aliases: ["wechat", "wx", "gewe"],
+  aliases: [...CHANNEL_ALIASES],
   order: 72,
   quickstartAllowFrom: true,
 };
@@ -45,11 +53,11 @@ type GeweSetupInput = ChannelSetupInput & {
 };
 
 export const gewePlugin: ChannelPlugin<ResolvedGeweAccount> = {
-  id: "gewe",
+  id: CHANNEL_ID,
   meta,
   pairing: {
     idLabel: "wechatUserId",
-    normalizeAllowEntry: (entry) => entry.replace(/^(gewe|wechat|wx):/i, ""),
+    normalizeAllowEntry: (entry) => stripChannelPrefix(entry),
     notifyApproval: async ({ cfg, id }) => {
       const account = resolveGeweAccount({ cfg: cfg as CoreConfig });
       if (!account.token || !account.appId) {
@@ -70,7 +78,7 @@ export const gewePlugin: ChannelPlugin<ResolvedGeweAccount> = {
     nativeCommands: false,
     blockStreaming: true,
   },
-  reload: { configPrefixes: ["channels.gewe"] },
+  reload: { configPrefixes: [`channels.${CHANNEL_CONFIG_KEY}`] },
   configSchema: buildChannelConfigSchema(GeweConfigSchema),
   config: {
     listAccountIds: (cfg) => listGeweAccountIds(cfg as CoreConfig),
@@ -79,7 +87,7 @@ export const gewePlugin: ChannelPlugin<ResolvedGeweAccount> = {
     setAccountEnabled: ({ cfg, accountId, enabled }) =>
       setAccountEnabledInConfigSection({
         cfg,
-        sectionKey: "gewe",
+        sectionKey: CHANNEL_CONFIG_KEY,
         accountId,
         enabled,
         allowTopLevel: true,
@@ -87,7 +95,7 @@ export const gewePlugin: ChannelPlugin<ResolvedGeweAccount> = {
     deleteAccount: ({ cfg, accountId }) =>
       deleteAccountFromConfigSection({
         cfg,
-        sectionKey: "gewe",
+        sectionKey: CHANNEL_CONFIG_KEY,
         accountId,
         clearBaseFields: ["token", "tokenFile", "appId", "appIdFile", "name"],
       }),
@@ -108,24 +116,24 @@ export const gewePlugin: ChannelPlugin<ResolvedGeweAccount> = {
       allowFrom
         .map((entry) => String(entry).trim())
         .filter(Boolean)
-        .map((entry) => entry.replace(/^(gewe|wechat|wx):/i, "")),
+        .map((entry) => stripChannelPrefix(entry)),
   },
   security: {
     resolveDmPolicy: ({ cfg, accountId, account }) => {
       const resolvedAccountId = accountId ?? account.accountId ?? DEFAULT_ACCOUNT_ID;
       const useAccountPath = Boolean(
-        cfg.channels?.gewe?.accounts?.[resolvedAccountId],
+        cfg.channels?.[CHANNEL_CONFIG_KEY]?.accounts?.[resolvedAccountId],
       );
       const basePath = useAccountPath
-        ? `channels.gewe.accounts.${resolvedAccountId}.`
-        : "channels.gewe.";
+        ? `channels.${CHANNEL_CONFIG_KEY}.accounts.${resolvedAccountId}.`
+        : `channels.${CHANNEL_CONFIG_KEY}.`;
       return {
         policy: account.config.dmPolicy ?? "pairing",
         allowFrom: account.config.allowFrom ?? [],
         policyPath: `${basePath}dmPolicy`,
         allowFromPath: basePath,
-        approveHint: formatPairingApproveHint("gewe"),
-        normalizeEntry: (raw) => raw.replace(/^(gewe|wechat|wx):/i, ""),
+        approveHint: formatPairingApproveHint(CHANNEL_ID),
+        normalizeEntry: (raw) => stripChannelPrefix(raw),
       };
     },
     collectWarnings: ({ account, cfg }) => {
@@ -136,11 +144,11 @@ export const gewePlugin: ChannelPlugin<ResolvedGeweAccount> = {
         account.config.groups && Object.keys(account.config.groups).length > 0;
       if (groupAllowlistConfigured) {
         return [
-          `- GeWe groups: groupPolicy="open" allows any member in allowed groups to trigger (mention-gated). Set channels.gewe.groupPolicy="allowlist" + channels.gewe.groupAllowFrom to restrict senders.`,
+          `- GeWe groups: groupPolicy="open" allows any member in allowed groups to trigger (mention-gated). Set channels.${CHANNEL_CONFIG_KEY}.groupPolicy="allowlist" + channels.${CHANNEL_CONFIG_KEY}.groupAllowFrom to restrict senders.`,
         ];
       }
       return [
-        `- GeWe groups: groupPolicy="open" with no channels.gewe.groups allowlist; any group can add + ping (mention-gated). Set channels.gewe.groupPolicy="allowlist" + channels.gewe.groupAllowFrom or configure channels.gewe.groups.`,
+        `- GeWe groups: groupPolicy="open" with no channels.${CHANNEL_CONFIG_KEY}.groups allowlist; any group can add + ping (mention-gated). Set channels.${CHANNEL_CONFIG_KEY}.groupPolicy="allowlist" + channels.${CHANNEL_CONFIG_KEY}.groupAllowFrom or configure channels.${CHANNEL_CONFIG_KEY}.groups.`,
       ];
     },
   },
@@ -187,7 +195,10 @@ export const gewePlugin: ChannelPlugin<ResolvedGeweAccount> = {
           }
           return {
             ok: false,
-            error: missingTargetError("GeWe", "<wxid|@chatroom> or channels.gewe.allowFrom[0]"),
+            error: missingTargetError(
+              "GeWe",
+              `<wxid|@chatroom> or channels.${CHANNEL_CONFIG_KEY}.allowFrom[0]`,
+            ),
           };
         }
         return { ok: true, to: normalized };
@@ -198,7 +209,10 @@ export const gewePlugin: ChannelPlugin<ResolvedGeweAccount> = {
       }
       return {
         ok: false,
-        error: missingTargetError("GeWe", "<wxid|@chatroom> or channels.gewe.allowFrom[0]"),
+        error: missingTargetError(
+          "GeWe",
+          `<wxid|@chatroom> or channels.${CHANNEL_CONFIG_KEY}.allowFrom[0]`,
+        ),
       };
     },
     sendPayload: async ({ payload, cfg, to, accountId }) => {
@@ -210,7 +224,7 @@ export const gewePlugin: ChannelPlugin<ResolvedGeweAccount> = {
         toWxid: to,
       });
       return {
-        channel: "gewe",
+        channel: CHANNEL_ID,
         messageId: result?.messageId ?? "ok",
         timestamp: result?.timestamp,
         meta: { newMessageId: result?.newMessageId },
@@ -225,7 +239,7 @@ export const gewePlugin: ChannelPlugin<ResolvedGeweAccount> = {
         toWxid: to,
       });
       return {
-        channel: "gewe",
+        channel: CHANNEL_ID,
         messageId: result?.messageId ?? "ok",
         timestamp: result?.timestamp,
         meta: { newMessageId: result?.newMessageId },
@@ -240,7 +254,7 @@ export const gewePlugin: ChannelPlugin<ResolvedGeweAccount> = {
         toWxid: to,
       });
       return {
-        channel: "gewe",
+        channel: CHANNEL_ID,
         messageId: result?.messageId ?? "ok",
         timestamp: result?.timestamp,
         meta: { newMessageId: result?.newMessageId },
@@ -307,7 +321,9 @@ export const gewePlugin: ChannelPlugin<ResolvedGeweAccount> = {
     },
     logoutAccount: async ({ accountId, cfg }) => {
       const nextCfg = { ...cfg } as OpenClawConfig;
-      const nextSection = cfg.channels?.gewe ? { ...cfg.channels.gewe } : undefined;
+      const nextSection = cfg.channels?.[CHANNEL_CONFIG_KEY]
+        ? { ...(cfg.channels?.[CHANNEL_CONFIG_KEY] as Record<string, unknown>) }
+        : undefined;
       let cleared = false;
       let changed = false;
 
@@ -377,7 +393,7 @@ export const gewePlugin: ChannelPlugin<ResolvedGeweAccount> = {
         if (changed) {
           nextCfg.channels = {
             ...nextCfg.channels,
-            gewe: nextSection,
+            [CHANNEL_CONFIG_KEY]: nextSection,
           };
         }
       }
@@ -390,7 +406,7 @@ export const gewePlugin: ChannelPlugin<ResolvedGeweAccount> = {
     applyAccountName: ({ cfg, accountId, name }) =>
       applyAccountNameToChannelSection({
         cfg: cfg as OpenClawConfig,
-        channelKey: "gewe",
+        channelKey: CHANNEL_CONFIG_KEY,
         accountId,
         name,
       }),
@@ -411,11 +427,14 @@ export const gewePlugin: ChannelPlugin<ResolvedGeweAccount> = {
       const setupInput = input as GeweSetupInput;
       const namedConfig = applyAccountNameToChannelSection({
         cfg: cfg as OpenClawConfig,
-        channelKey: "gewe",
+        channelKey: CHANNEL_CONFIG_KEY,
         accountId,
         name: setupInput.name,
       });
-      const section = (namedConfig.channels?.gewe ?? {}) as Record<string, unknown>;
+      const section = (namedConfig.channels?.[CHANNEL_CONFIG_KEY] ?? {}) as Record<
+        string,
+        unknown
+      >;
       const useAccountPath = accountId !== DEFAULT_ACCOUNT_ID;
       const base = useAccountPath
         ? (section.accounts?.[accountId] as Record<string, unknown> | undefined) ?? {}
@@ -443,7 +462,7 @@ export const gewePlugin: ChannelPlugin<ResolvedGeweAccount> = {
           ...namedConfig,
           channels: {
             ...namedConfig.channels,
-            gewe: nextEntry,
+            [CHANNEL_CONFIG_KEY]: nextEntry,
           },
         };
       }
@@ -451,7 +470,7 @@ export const gewePlugin: ChannelPlugin<ResolvedGeweAccount> = {
         ...namedConfig,
         channels: {
           ...namedConfig.channels,
-          gewe: {
+          [CHANNEL_CONFIG_KEY]: {
             ...section,
             accounts: {
               ...(section.accounts as Record<string, unknown> | undefined),

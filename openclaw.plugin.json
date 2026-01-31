@@ -1,7 +1,7 @@
 {
   "id": "gewe-openclaw",
   "channels": [
-    "gewe"
+    "gewe-openclaw"
   ],
   "configSchema": {
     "type": "object",

@@ -19,8 +19,7 @@ import {
 } from "./policy.js";
 import type { CoreConfig, GeweInboundMessage, ResolvedGeweAccount } from "./types.js";
 import { extractAppMsgType, extractFileName, extractLinkDetails } from "./xml.js";
-
-const CHANNEL_ID = "gewe" as const;
+import { CHANNEL_ID } from "./constants.js";
 
 type PreparedInbound = {
   rawBody: string;
@@ -103,7 +102,7 @@ async function decodeSilkVoice(params: {
   fileName?: string | null;
 }): Promise<DecodedVoice | null> {
   const core = getGeweRuntime();
-  const logger = core.logging.getChildLogger({ channel: "gewe", module: "voice" });
+  const logger = core.logging.getChildLogger({ channel: CHANNEL_ID, module: "voice" });
   const decodeOutput = params.account.config.voiceDecodeOutput ?? "pcm";
   const sampleRate = resolveVoiceDecodeSampleRate(params.account);
   const ffmpegPath = params.account.config.voiceFfmpegPath?.trim() || "ffmpeg";
@@ -261,8 +260,10 @@ async function dispatchGeweInbound(params: {
     Body: body,
     RawBody: prepared.rawBody,
     CommandBody: prepared.rawBody,
-    From: prepared.groupId ? `gewe:group:${prepared.groupId}` : `gewe:${prepared.senderId}`,
-    To: `gewe:${prepared.toWxid}`,
+    From: prepared.groupId
+      ? `${CHANNEL_ID}:group:${prepared.groupId}`
+      : `${CHANNEL_ID}:${prepared.senderId}`,
+    To: `${CHANNEL_ID}:${prepared.toWxid}`,
     SessionKey: prepared.route.sessionKey,
     AccountId: prepared.route.accountId,
     ChatType: prepared.isGroup ? "group" : "direct",
@@ -272,16 +273,16 @@ async function dispatchGeweInbound(params: {
     SenderName: prepared.senderName || undefined,
     SenderId: prepared.senderId,
     CommandAuthorized: prepared.commandAuthorized,
-    Provider: "gewe",
-    Surface: "gewe",
+    Provider: CHANNEL_ID,
+    Surface: CHANNEL_ID,
     MessageSid: prepared.messageSid,
     MessageSidFull: prepared.messageSid,
     MediaPath: media?.path,
     MediaType: media?.contentType,
     MediaUrl: media?.path,
     GroupSystemPrompt: prepared.groupSystemPrompt,
-    OriginatingChannel: "gewe",
-    OriginatingTo: `gewe:${prepared.toWxid}`,
+    OriginatingChannel: CHANNEL_ID,
+    OriginatingTo: `${CHANNEL_ID}:${prepared.toWxid}`,
   });
 
   await core.channel.session.recordInboundSession({
@@ -523,7 +524,7 @@ export async function handleGeweInbound(params: {
   };
 
   core.channel.activity.record({
-    channel: "gewe",
+    channel: CHANNEL_ID,
     accountId: account.accountId,
     direction: "inbound",
   });

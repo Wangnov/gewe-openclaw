@@ -7,10 +7,11 @@ import {
   resolveNestedAllowlistDecision,
 } from "openclaw/plugin-sdk";
 
+import { CHANNEL_CONFIG_KEY, CHANNEL_PREFIX_REGEX } from "./constants.js";
 import type { GeweGroupConfig } from "./types.js";
 
 function normalizeAllowEntry(raw: string): string {
-  return raw.trim().toLowerCase().replace(/^(gewe|wechat|wx):/i, "");
+  return raw.trim().toLowerCase().replace(CHANNEL_PREFIX_REGEX, "");
 }
 
 export function normalizeGeweAllowlist(values: Array<string | number> | undefined): string[] {
@@ -89,7 +90,7 @@ export function resolveGeweGroupToolPolicy(
 ): GeweGroupConfig["tools"] | undefined {
   const cfg = params.cfg as {
     channels?: {
-      gewe?: {
+      "gewe-openclaw"?: {
         groups?: Record<string, GeweGroupConfig>;
         accounts?: Record<string, { groups?: Record<string, GeweGroupConfig> }>;
       };
@@ -99,10 +100,10 @@ export function resolveGeweGroupToolPolicy(
   if (!groupId) return undefined;
   const groupName = params.groupChannel?.trim() || undefined;
   const accountGroups =
-    params.accountId && cfg.channels?.gewe?.accounts?.[params.accountId]?.groups
-      ? cfg.channels?.gewe?.accounts?.[params.accountId]?.groups
+    params.accountId && cfg.channels?.[CHANNEL_CONFIG_KEY]?.accounts?.[params.accountId]?.groups
+      ? cfg.channels?.[CHANNEL_CONFIG_KEY]?.accounts?.[params.accountId]?.groups
       : undefined;
-  const groups = accountGroups ?? cfg.channels?.gewe?.groups;
+  const groups = accountGroups ?? cfg.channels?.[CHANNEL_CONFIG_KEY]?.groups;
   const match = resolveGeweGroupMatch({
     groups,
     groupId,
