@@ -5,7 +5,7 @@ import { gewePlugin } from "./src/channel.js";
 import { setGeweRuntime } from "./src/runtime.js";
 
 const plugin = {
-  id: "gewe",
+  id: "gewe-openclaw",
   name: "GeWe",
   description: "OpenClaw GeWe channel plugin",
   configSchema: emptyPluginConfigSchema(),

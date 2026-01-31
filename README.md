@@ -32,6 +32,81 @@ openclaw plugins install ./gewe-openclaw.tgz
 
 > 安装或启用插件后需要重启 Gateway。
 
+## 配置
+
+插件配置放在 `~/.openclaw/openclaw.json` 的 `channels.gewe`，并确保插件开启：
+
+```json5
+{
+  "plugins": {
+    "entries": {
+      "gewe-openclaw": { "enabled": true }
+    }
+  },
+  "channels": {
+    "gewe": {
+      "enabled": true,
+      "apiBaseUrl": "https://www.geweapi.com",
+      "token": "<gewe-token>",
+      "appId": "<gewe-app-id>",
+      "webhookHost": "0.0.0.0",
+      "webhookPort": 4399,
+      "webhookPath": "/webhook",
+      "mediaHost": "0.0.0.0",
+      "mediaPort": 4400,
+      "mediaPath": "/gewe-media",
+      "mediaPublicUrl": "https://your-public-domain/gewe-media",
+      "allowFrom": ["wxid_xxx"]
+    }
+  }
+}
+```
+
+说明：
+- `webhookHost/webhookPort/webhookPath`：GeWe 回调入口（需公网可达，常配合 FRP）。
+- `mediaPublicUrl`：公网访问地址，供微信拉取媒体。
+- `allowFrom`：允许私聊触发的微信 ID（或在群里走 allowlist 规则）。
+
+> 配置变更后需重启 Gateway。
+
+## 在 onboarding 列表中显示（可选）
+
+OpenClaw 支持外部插件目录（catalog）。放置到以下路径即可被 onboarding 读取：
+
+```
+~/.openclaw/plugins/catalog.json
+```
+
+示例（只需添加一次）：
+
+```json
+{
+  "entries": [
+    {
+      "name": "gewe-openclaw",
+      "openclaw": {
+        "channel": {
+          "id": "gewe",
+          "label": "GeWe",
+          "selectionLabel": "WeChat (GeWe)",
+          "detailLabel": "WeChat (GeWe)",
+          "docsPath": "/channels/gewe",
+          "docsLabel": "gewe",
+          "blurb": "WeChat channel via GeWe API and webhook callbacks.",
+          "aliases": ["wechat", "wx", "gewe"],
+          "order": 72,
+          "quickstartAllowFrom": true
+        },
+        "install": {
+          "npmSpec": "gewe-openclaw",
+          "defaultChoice": "npm"
+        }
+      }
+    }
+  ]
+}
+```
+
 ## 依赖
 
 ### npm 依赖
@@ -53,4 +128,3 @@ openclaw plugins install ./gewe-openclaw.tgz
 - GeWe API 服务
 - Webhook 回调需要公网可达（可配合 FRP）
 - 媒体对外地址（`mediaPublicUrl`）
-
