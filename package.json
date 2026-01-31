@@ -1,0 +1,39 @@
+{
+  "name": "gewe-openclaw",
+  "version": "2026.1.29",
+  "type": "module",
+  "description": "OpenClaw GeWe channel plugin",
+  "license": "MIT",
+  "openclaw": {
+    "extensions": [
+      "./index.ts"
+    ],
+    "channel": {
+      "id": "gewe",
+      "label": "GeWe",
+      "selectionLabel": "WeChat (GeWe)",
+      "detailLabel": "WeChat (GeWe)",
+      "docsPath": "/channels/gewe",
+      "docsLabel": "gewe",
+      "blurb": "WeChat channel via GeWe API and webhook callbacks.",
+      "aliases": [
+        "wechat",
+        "wx",
+        "gewe"
+      ],
+      "order": 72,
+      "quickstartAllowFrom": true
+    },
+    "install": {
+      "npmSpec": "gewe-openclaw",
+      "localPath": "extensions/gewe",
+      "defaultChoice": "npm"
+    }
+  },
+  "dependencies": {
+    "zod": "^4.3.6"
+  },
+  "peerDependencies": {
+    "openclaw": ">=2026.1.29"
+  }
+}

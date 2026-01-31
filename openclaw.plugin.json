@@ -1,0 +1,11 @@
+{
+  "id": "gewe",
+  "channels": [
+    "gewe"
+  ],
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  }
+}
