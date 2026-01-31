@@ -9,6 +9,7 @@ import type { GeweDownloadQueue } from "./download-queue.js";
 import { downloadGeweFile, downloadGeweImage, downloadGeweVideo, downloadGeweVoice } from "./download.js";
 import { deliverGewePayload } from "./delivery.js";
 import { getGeweRuntime } from "./runtime.js";
+import { ensureRustSilkBinary } from "./silk.js";
 import {
   normalizeGeweAllowlist,
   resolveGeweAllowlistMatch,
@@ -116,10 +117,28 @@ async function decodeSilkVoice(params: {
     ["{input}", "-o", "{output}"],
     ["-i", "{input}", "{output}"],
   ];
-  const argTemplates = customArgs.length ? customArgs : fallbackArgs;
+  const rustArgs = [
+    "decode",
+    "-i",
+    "{input}",
+    "-o",
+    "{output}",
+    "--sample-rate",
+    "{sampleRate}",
+    "--quiet",
+  ];
+  if (decodeOutput === "wav") rustArgs.push("--wav");
+  const rustSilk = customPath ? null : await ensureRustSilkBinary(params.account);
+  const argTemplates = customArgs.length
+    ? customArgs
+    : rustSilk
+      ? [rustArgs]
+      : fallbackArgs;
   const candidates = customPath
     ? [customPath]
-    : ["silk-decoder", "silk-v3-decoder", "decoder"];
+    : rustSilk
+      ? [rustSilk]
+      : ["silk-decoder", "silk-v3-decoder", "decoder"];
 
   const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-gewe-voice-in-"));
   const silkPath = path.join(tmpDir, "voice.silk");

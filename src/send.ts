@@ -8,7 +8,7 @@ type GeweSendContext = {
 };
 
 function buildContext(account: ResolvedGeweAccount): GeweSendContext {
-  const baseUrl = account.config.apiBaseUrl?.trim() || "http://api.geweapi.com";
+  const baseUrl = account.config.apiBaseUrl?.trim() || "https://www.geweapi.com";
   return { baseUrl, token: account.token, appId: account.appId };
 }
 

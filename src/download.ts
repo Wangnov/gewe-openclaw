@@ -4,7 +4,7 @@ import type { ResolvedGeweAccount } from "./types.js";
 type DownloadResult = { fileUrl: string };
 
 function resolveBaseUrl(account: ResolvedGeweAccount): string {
-  return account.config.apiBaseUrl?.trim() || "http://api.geweapi.com";
+  return account.config.apiBaseUrl?.trim() || "https://www.geweapi.com";
 }
 
 export async function downloadGeweImage(params: {

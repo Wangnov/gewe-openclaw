@@ -5,7 +5,7 @@ import { DEFAULT_ACCOUNT_ID, normalizeAccountId } from "openclaw/plugin-sdk";
 import { CHANNEL_CONFIG_KEY } from "./constants.js";
 import type { CoreConfig, GeweAccountConfig, GeweAppIdSource, GeweTokenSource } from "./types.js";
 
-const DEFAULT_API_BASE_URL = "http://api.geweapi.com";
+const DEFAULT_API_BASE_URL = "https://www.geweapi.com";
 
 export type ResolvedGeweAccount = {
   accountId: string;

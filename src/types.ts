@@ -42,6 +42,12 @@ export type GeweAccountConfig = {
   voiceDecodeArgs?: string[];
   voiceDecodeSampleRate?: number;
   voiceDecodeOutput?: "pcm" | "wav";
+  silkAutoDownload?: boolean;
+  silkVersion?: string;
+  silkBaseUrl?: string;
+  silkSha256?: string;
+  silkAllowUnverified?: boolean;
+  silkInstallDir?: string;
   videoFfmpegPath?: string;
   videoFfprobePath?: string;
   videoThumbUrl?: string;

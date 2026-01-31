@@ -56,7 +56,12 @@ openclaw plugins install ./gewe-openclaw.tgz
       "mediaPort": 4400,
       "mediaPath": "/gewe-media",
       "mediaPublicUrl": "https://your-public-domain/gewe-media",
-      "allowFrom": ["wxid_xxx"]
+      "allowFrom": ["wxid_xxx"],
+      "silkAutoDownload": true,
+      "silkVersion": "latest",
+      "silkBaseUrl": "https://github.com/Wangnov/rust-silk/releases/download",
+      "silkInstallDir": "~/.openclaw/tools/rust-silk",
+      "silkAllowUnverified": false
     }
   }
 }
@@ -64,8 +69,16 @@ openclaw plugins install ./gewe-openclaw.tgz
 
 说明：
 - `webhookHost/webhookPort/webhookPath`：GeWe 回调入口（需公网可达，常配合 FRP）。
-- `mediaPublicUrl`：公网访问地址，供微信拉取媒体。
+- `mediaPath`：本地媒体服务的路由前缀（默认 `/gewe-media`）。
+- `mediaPublicUrl`：公网访问地址的“基础前缀”，会自动拼接媒体 ID。通常应与 `mediaPath` 对齐，例如 `mediaPath="/gewe-media"` 时，`mediaPublicUrl` 也应包含 `/gewe-media`。
 - `allowFrom`：允许私聊触发的微信 ID（或在群里走 allowlist 规则）。
+- `voiceAutoConvert`：自动将音频转为 silk（默认开启；设为 `false` 可关闭）。
+- `silkAutoDownload`：自动下载 `rust-silk`（默认开启；可关闭后自行配置 `voiceSilkPath` / `voiceDecodePath`）。
+- `silkVersion`：自动下载的 `rust-silk` 版本（`latest` 会自动清理旧版本）。
+- `silkBaseUrl`：自定义下载源（默认 GitHub Releases）。
+- `silkInstallDir`：自定义安装目录（默认 `~/.openclaw/tools/rust-silk/<version>`）。
+- `silkAllowUnverified`：校验文件缺失时是否允许继续（默认 `false`）。
+- `silkSha256`：手动指定下载包 SHA256（用于私有源或校验文件缺失场景）。
 
 > 配置变更后需重启 Gateway。
 
@@ -107,6 +120,8 @@ OpenClaw 支持外部插件目录（catalog）。放置到以下路径即可被 
 }
 ```
 
+> 现在插件已支持 onboarding：选择 GeWe 通道后会提示填写 token/appId/webhook/mediaPublicUrl 等配置。
+
 ## 依赖
 
 ### npm 依赖
@@ -120,8 +135,8 @@ OpenClaw 支持外部插件目录（catalog）。放置到以下路径即可被 
 ### 系统级工具
 
 - `ffmpeg` / `ffprobe`（用于视频缩略图与时长）
-- `silk-encoder`（出站语音转 silk）
-- `silk-decoder`（入站语音解码）
+- `rust-silk`（出站语音转 silk + 入站语音解码；支持自动下载）
+- 或者自行安装 `silk-encoder` / `silk-decoder` 并在配置中指定路径
 
 ### 网络/服务依赖
 

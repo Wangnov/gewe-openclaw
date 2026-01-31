@@ -15,9 +15,9 @@ import type {
   ResolvedGeweAccount,
 } from "./types.js";
 
-const DEFAULT_WEBHOOK_PORT = 18786;
+const DEFAULT_WEBHOOK_PORT = 4399;
 const DEFAULT_WEBHOOK_HOST = "0.0.0.0";
-const DEFAULT_WEBHOOK_PATH = "/gewe-webhook";
+const DEFAULT_WEBHOOK_PATH = "/webhook";
 const HEALTH_PATH = "/healthz";
 const DEDUPE_TTL_MS = 12 * 60 * 60 * 1000;
 

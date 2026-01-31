@@ -7,6 +7,7 @@ import type { OpenClawConfig, ReplyPayload } from "openclaw/plugin-sdk";
 import { extractOriginalFilename, extensionForMime } from "openclaw/plugin-sdk";
 import { CHANNEL_ID } from "./constants.js";
 import { getGeweRuntime } from "./runtime.js";
+import { ensureRustSilkBinary } from "./silk.js";
 import {
   sendFileGewe,
   sendImageGewe,
@@ -251,20 +252,39 @@ async function convertAudioToSilk(params: {
 }): Promise<{ buffer: Buffer; durationMs: number } | null> {
   const core = getGeweRuntime();
   const logger = core.logging.getChildLogger({ channel: CHANNEL_ID, module: "voice" });
-  if (!params.account.config.voiceAutoConvert) return null;
+  if (params.account.config.voiceAutoConvert === false) return null;
 
   const sampleRate = resolveVoiceSampleRate(params.account);
   const ffmpegPath = params.account.config.voiceFfmpegPath?.trim() || DEFAULT_VOICE_FFMPEG;
-  const silkPath = params.account.config.voiceSilkPath?.trim() || DEFAULT_VOICE_SILK;
-  const customArgs =
-    params.account.config.voiceSilkArgs?.length ? [params.account.config.voiceSilkArgs] : [];
   const fallbackArgs = [
     ["-i", "{input}", "-o", "{output}", "-rate", "{sampleRate}"],
     ["{input}", "{output}", "-rate", "{sampleRate}"],
     ["{input}", "{output}", "{sampleRate}"],
     ["{input}", "{output}"],
   ];
-  const argTemplates = customArgs.length ? customArgs : fallbackArgs;
+  const rustArgs = [
+    "encode",
+    "-i",
+    "{input}",
+    "-o",
+    "{output}",
+    "--sample-rate",
+    "{sampleRate}",
+    "--tencent",
+    "--quiet",
+  ];
+  const customPath = params.account.config.voiceSilkPath?.trim();
+  const customArgs =
+    params.account.config.voiceSilkArgs?.length ? [params.account.config.voiceSilkArgs] : [];
+  let silkPath = customPath || DEFAULT_VOICE_SILK;
+  let argTemplates = customArgs.length ? customArgs : fallbackArgs;
+  if (!customPath) {
+    const rustSilk = await ensureRustSilkBinary(params.account);
+    if (rustSilk) {
+      silkPath = rustSilk;
+      argTemplates = [rustArgs];
+    }
+  }
 
   const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "moltbot-gewe-voice-"));
   const pcmPath = path.join(tmpDir, "voice.pcm");
