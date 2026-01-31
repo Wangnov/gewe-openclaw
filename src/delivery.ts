@@ -497,6 +497,21 @@ async function resolveLinkThumbUrl(params: {
   }
 }
 
+function normalizeMediaToken(raw: string): string {
+  let value = raw.trim();
+  if (value.toUpperCase().startsWith("MEDIA:")) {
+    value = value.slice("MEDIA:".length).trim();
+  }
+  if (
+    (value.startsWith("`") && value.endsWith("`")) ||
+    (value.startsWith("\"") && value.endsWith("\"")) ||
+    (value.startsWith("'") && value.endsWith("'"))
+  ) {
+    value = value.slice(1, -1).trim();
+  }
+  return value;
+}
+
 async function stageMedia(params: {
   account: ResolvedGeweAccount;
   cfg: OpenClawConfig;
@@ -504,7 +519,7 @@ async function stageMedia(params: {
   allowRemote: boolean;
 }): Promise<ResolvedMedia> {
   const core = getGeweRuntime();
-  const rawUrl = params.mediaUrl.trim();
+  const rawUrl = normalizeMediaToken(params.mediaUrl);
   if (!rawUrl) throw new Error("mediaUrl is empty");
 
   if (looksLikeHttpUrl(rawUrl) && params.allowRemote) {
@@ -598,6 +613,7 @@ export async function deliverGewePayload(params: {
   const trimmedText = payload.text?.trim() ?? "";
   const mediaUrl =
     payload.mediaUrl?.trim() || payload.mediaUrls?.[0]?.trim() || "";
+  const normalizedMediaUrl = normalizeMediaToken(mediaUrl);
 
   if (geweData?.link) {
     const link = geweData.link;
@@ -625,12 +641,12 @@ export async function deliverGewePayload(params: {
   if (mediaUrl) {
     const audioAsVoice = payload.audioAsVoice === true;
     const forceFile = geweData?.forceFile === true;
-    const ttsVoiceHint = !forceFile && looksLikeTtsVoiceMediaUrl(mediaUrl);
+    const ttsVoiceHint = !forceFile && looksLikeTtsVoiceMediaUrl(normalizedMediaUrl);
     const wantsVoice = !forceFile && (audioAsVoice || ttsVoiceHint);
     const staged = await stageMedia({
       account,
       cfg,
-      mediaUrl,
+      mediaUrl: normalizedMediaUrl,
       allowRemote: !wantsVoice,
     });
     const contentType = staged.contentType;
