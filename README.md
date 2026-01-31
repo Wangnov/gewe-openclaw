@@ -32,21 +32,31 @@ openclaw plugins install ./gewe-openclaw.tgz
 
 > 安装或启用插件后需要重启 Gateway。
 
+## 配置方式（二选一）
+
+安装完成后可任选一种方式完成配置：
+
+### 方式 A：Onboarding 向导
+
+```bash
+openclaw onboard
+```
+
+在通道列表中选择 **GeWe**，按提示填写 `token`、`appId`、`webhook` 与 `mediaPublicUrl` 等信息。
+
+### 方式 B：直接编辑配置文件
+
+直接编辑 `~/.openclaw/openclaw.json` 的 `channels.gewe-openclaw` 段落（见下方示例）。
+
 ## 配置
 
-插件配置放在 `~/.openclaw/openclaw.json` 的 `channels.gewe-openclaw`，并确保插件开启：
+插件配置放在 `~/.openclaw/openclaw.json` 的 `channels.gewe-openclaw`，并确保通道开启（示例仅保留必填/常用字段）：
 
 ```json5
 {
-  "plugins": {
-    "entries": {
-      "gewe-openclaw": { "enabled": true }
-    }
-  },
   "channels": {
     "gewe-openclaw": {
       "enabled": true,
-      "apiBaseUrl": "https://www.geweapi.com",
       "token": "<gewe-token>",
       "appId": "<gewe-app-id>",
       "webhookHost": "0.0.0.0",
@@ -56,18 +66,13 @@ openclaw plugins install ./gewe-openclaw.tgz
       "mediaPort": 4400,
       "mediaPath": "/gewe-media",
       "mediaPublicUrl": "https://your-public-domain/gewe-media",
-      "allowFrom": ["wxid_xxx"],
-      "silkAutoDownload": true,
-      "silkVersion": "latest",
-      "silkBaseUrl": "https://github.com/Wangnov/rust-silk/releases/download",
-      "silkInstallDir": "~/.openclaw/tools/rust-silk",
-      "silkAllowUnverified": false
+      "allowFrom": ["wxid_xxx"]
     }
   }
 }
 ```
 
-说明：
+完整参数说明：
 - `webhookHost/webhookPort/webhookPath`：GeWe 回调入口（需公网可达，常配合 FRP）。
 - `mediaPath`：本地媒体服务的路由前缀（默认 `/gewe-media`）。
 - `mediaPublicUrl`：公网访问地址的“基础前缀”，会自动拼接媒体 ID。通常应与 `mediaPath` 对齐，例如 `mediaPath="/gewe-media"` 时，`mediaPublicUrl` 也应包含 `/gewe-media`。
@@ -79,18 +84,25 @@ openclaw plugins install ./gewe-openclaw.tgz
 - `silkInstallDir`：自定义安装目录（默认 `~/.openclaw/tools/rust-silk/<version>`）。
 - `silkAllowUnverified`：校验文件缺失时是否允许继续（默认 `false`）。
 - `silkSha256`：手动指定下载包 SHA256（用于私有源或校验文件缺失场景）。
+ - `apiBaseUrl`：GeWe API 地址（默认 `https://www.geweapi.com`）。
+ - `voiceFfmpegPath`/`videoFfmpegPath`/`videoFfprobePath`：自定义 ffmpeg/ffprobe 路径。
+ - `voiceSilkPath`/`voiceSilkArgs`：自定义 silk 编码器路径和参数（不使用自动下载时）。
+ - `voiceDecodePath`/`voiceDecodeArgs`/`voiceDecodeOutput`：自定义 silk 解码器（入站语音转写用）。
+ - `mediaMaxMb`：上传媒体大小上限（默认 20MB）。
+ - `downloadMinDelayMs`/`downloadMaxDelayMs`：入站媒体下载节流。
 
 > 配置变更后需重启 Gateway。
 
-## 在 onboarding 列表中显示（可选）
+## 高级用法：让未安装插件也出现在 onboarding 列表
 
-OpenClaw 支持外部插件目录（catalog）。放置到以下路径即可被 onboarding 读取：
+默认情况下，**只有已安装的插件**会出现在 onboarding 列表中。  
+如果你希望“未安装时也能在列表中展示”，需要配置本地 catalog：
 
 ```
 ~/.openclaw/plugins/catalog.json
 ```
 
-示例（只需添加一次）：
+示例（添加一次即可）：
 
 ```json
 {
