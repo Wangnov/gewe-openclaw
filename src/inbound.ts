@@ -1,3 +1,4 @@
+import { spawn } from "node:child_process";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -97,6 +98,71 @@ function resolveDecodeArgs(params: {
   return next;
 }
 
+async function decodeSilkWithPipes(params: {
+  silkPath: string;
+  silkArgs: string[];
+  ffmpegPath: string;
+  ffmpegArgs: string[];
+  input: Buffer;
+  timeoutMs: number;
+}): Promise<Buffer> {
+  const silk = spawn(params.silkPath, params.silkArgs, {
+    stdio: ["pipe", "pipe", "pipe"],
+  });
+  const ffmpeg = spawn(params.ffmpegPath, params.ffmpegArgs, {
+    stdio: ["pipe", "pipe", "pipe"],
+  });
+
+  let silkErr = "";
+  let ffmpegErr = "";
+  const chunks: Buffer[] = [];
+
+  silk.stderr?.on("data", (d) => {
+    silkErr += d.toString();
+  });
+  ffmpeg.stderr?.on("data", (d) => {
+    ffmpegErr += d.toString();
+  });
+  ffmpeg.stdout?.on("data", (d) => {
+    chunks.push(Buffer.from(d));
+  });
+
+  silk.stdout?.pipe(ffmpeg.stdin!);
+  silk.stdin?.write(params.input);
+  silk.stdin?.end();
+
+  const timer = setTimeout(() => {
+    silk.kill("SIGKILL");
+    ffmpeg.kill("SIGKILL");
+  }, params.timeoutMs);
+
+  const [silkRes, ffmpegRes] = await Promise.all([
+    new Promise<{ code: number | null }>((resolve, reject) => {
+      silk.on("error", reject);
+      silk.on("close", (code) => resolve({ code }));
+    }),
+    new Promise<{ code: number | null }>((resolve, reject) => {
+      ffmpeg.on("error", reject);
+      ffmpeg.on("close", (code) => resolve({ code }));
+    }),
+  ]).finally(() => {
+    clearTimeout(timer);
+  });
+
+  if (silkRes.code !== 0) {
+    throw new Error(`silk decode failed: ${silkErr.trim() || `exit code ${silkRes.code ?? "?"}`}`);
+  }
+  if (ffmpegRes.code !== 0) {
+    throw new Error(`ffmpeg failed: ${ffmpegErr.trim() || `exit code ${ffmpegRes.code ?? "?"}`}`);
+  }
+
+  const buffer = Buffer.concat(chunks);
+  if (!buffer.length) {
+    throw new Error("ffmpeg produced empty output");
+  }
+  return buffer;
+}
+
 async function decodeSilkVoice(params: {
   account: ResolvedGeweAccount;
   buffer: Buffer;
@@ -129,6 +195,52 @@ async function decodeSilkVoice(params: {
   ];
   if (decodeOutput === "wav") rustArgs.push("--wav");
   const rustSilk = customPath ? null : await ensureRustSilkBinary(params.account);
+  const pipeEnabled = params.account.config.voiceSilkPipe === true;
+  const usePipe = pipeEnabled && !!rustSilk && !customPath && customArgs.length === 0;
+  if (usePipe) {
+    try {
+      const silkArgs = [
+        "decode",
+        "-i",
+        "-",
+        "-o",
+        "-",
+        "--sample-rate",
+        String(sampleRate),
+        "--quiet",
+      ];
+      const ffmpegArgs = [
+        "-y",
+        "-f",
+        "s16le",
+        "-ar",
+        String(sampleRate),
+        "-ac",
+        "1",
+        "-i",
+        "pipe:0",
+        "-f",
+        "wav",
+        "pipe:1",
+      ];
+      const buffer = await decodeSilkWithPipes({
+        silkPath: rustSilk!,
+        silkArgs,
+        ffmpegPath,
+        ffmpegArgs,
+        input: params.buffer,
+        timeoutMs: DEFAULT_VOICE_DECODE_TIMEOUT_MS,
+      });
+      return {
+        buffer,
+        contentType: "audio/wav",
+        fileName: "voice.wav",
+      };
+    } catch (err) {
+      logger.warn?.(`gewe voice decode pipe failed: ${String(err)}`);
+    }
+  }
+
   const argTemplates = customArgs.length
     ? customArgs
     : rustSilk

@@ -44,6 +44,7 @@ export const GeweAccountSchemaBase = z
     voiceFfmpegPath: z.string().optional(),
     voiceSilkPath: z.string().optional(),
     voiceSilkArgs: z.array(z.string()).optional(),
+    voiceSilkPipe: z.boolean().optional(),
     voiceSampleRate: z.number().int().positive().optional(),
     voiceDecodePath: z.string().optional(),
     voiceDecodeArgs: z.array(z.string()).optional(),

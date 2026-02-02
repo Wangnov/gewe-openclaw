@@ -1,6 +1,8 @@
+import { spawn } from "node:child_process";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { PassThrough } from "node:stream";
 import { fileURLToPath } from "node:url";
 
 import type { OpenClawConfig, ReplyPayload } from "openclaw/plugin-sdk";
@@ -246,6 +248,80 @@ function resolveSilkArgs(params: {
   return next;
 }
 
+async function encodeSilkWithPipes(params: {
+  ffmpegPath: string;
+  ffmpegArgs: string[];
+  silkPath: string;
+  silkArgs: string[];
+  timeoutMs: number;
+  sampleRate: number;
+}): Promise<{ buffer: Buffer; durationMs: number }> {
+  const ffmpeg = spawn(params.ffmpegPath, params.ffmpegArgs, {
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  const silk = spawn(params.silkPath, params.silkArgs, {
+    stdio: ["pipe", "pipe", "pipe"],
+  });
+
+  let pcmBytes = 0;
+  const pass = new PassThrough();
+  ffmpeg.stdout?.pipe(pass);
+  pass.on("data", (chunk) => {
+    pcmBytes += chunk.length;
+  });
+  pass.pipe(silk.stdin!);
+
+  const silkChunks: Buffer[] = [];
+  let ffmpegErr = "";
+  let silkErr = "";
+
+  ffmpeg.stderr?.on("data", (d) => {
+    ffmpegErr += d.toString();
+  });
+  silk.stderr?.on("data", (d) => {
+    silkErr += d.toString();
+  });
+  silk.stdout?.on("data", (d) => {
+    silkChunks.push(Buffer.from(d));
+  });
+
+  const timer = setTimeout(() => {
+    ffmpeg.kill("SIGKILL");
+    silk.kill("SIGKILL");
+  }, params.timeoutMs);
+
+  const [ffmpegRes, silkRes] = await Promise.all([
+    new Promise<{ code: number | null }>((resolve, reject) => {
+      ffmpeg.on("error", reject);
+      ffmpeg.on("close", (code) => resolve({ code }));
+    }),
+    new Promise<{ code: number | null }>((resolve, reject) => {
+      silk.on("error", reject);
+      silk.on("close", (code) => resolve({ code }));
+    }),
+  ]).finally(() => {
+    clearTimeout(timer);
+  });
+
+  if (ffmpegRes.code !== 0) {
+    throw new Error(`ffmpeg failed: ${ffmpegErr.trim() || `exit code ${ffmpegRes.code ?? "?"}`}`);
+  }
+  if (silkRes.code !== 0) {
+    throw new Error(`silk encoder failed: ${silkErr.trim() || `exit code ${silkRes.code ?? "?"}`}`);
+  }
+
+  const buffer = Buffer.concat(silkChunks);
+  if (!buffer.length) {
+    throw new Error("silk encoder produced empty output");
+  }
+
+  const durationMs = Math.max(
+    1,
+    Math.round((pcmBytes / (params.sampleRate * PCM_BYTES_PER_SAMPLE)) * 1000),
+  );
+  return { buffer, durationMs };
+}
+
 async function convertAudioToSilk(params: {
   account: ResolvedGeweAccount;
   sourcePath: string;
@@ -278,11 +354,52 @@ async function convertAudioToSilk(params: {
     params.account.config.voiceSilkArgs?.length ? [params.account.config.voiceSilkArgs] : [];
   let silkPath = customPath || DEFAULT_VOICE_SILK;
   let argTemplates = customArgs.length ? customArgs : fallbackArgs;
+  const pipeEnabled = params.account.config.voiceSilkPipe === true;
+  let usePipe = false;
   if (!customPath) {
     const rustSilk = await ensureRustSilkBinary(params.account);
     if (rustSilk) {
       silkPath = rustSilk;
       argTemplates = [rustArgs];
+      usePipe = pipeEnabled && customArgs.length === 0;
+    }
+  }
+
+  if (usePipe) {
+    try {
+      const ffmpegArgs = [
+        "-y",
+        "-i",
+        params.sourcePath,
+        "-ac",
+        "1",
+        "-ar",
+        String(sampleRate),
+        "-f",
+        "s16le",
+        "pipe:1",
+      ];
+      const silkArgs = [
+        "encode",
+        "-i",
+        "-",
+        "-o",
+        "-",
+        "--sample-rate",
+        String(sampleRate),
+        "--tencent",
+        "--quiet",
+      ];
+      return await encodeSilkWithPipes({
+        ffmpegPath,
+        ffmpegArgs,
+        silkPath,
+        silkArgs,
+        timeoutMs: DEFAULT_VOICE_TIMEOUT_MS,
+        sampleRate,
+      });
+    } catch (err) {
+      logger.warn?.(`gewe voice convert pipe failed: ${String(err)}`);
     }
   }
 

@@ -37,6 +37,7 @@ export type GeweAccountConfig = {
   voiceFfmpegPath?: string;
   voiceSilkPath?: string;
   voiceSilkArgs?: string[];
+  voiceSilkPipe?: boolean;
   voiceSampleRate?: number;
   voiceDecodePath?: string;
   voiceDecodeArgs?: string[];

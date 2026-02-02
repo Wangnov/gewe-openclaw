@@ -30,6 +30,7 @@ type ResolvedVersion = {
 };
 
 const installCache = new Map<string, Promise<string | null>>();
+const resolvedPathCache = new Map<string, string | null>();
 
 export function buildRustSilkEncodeArgs(params: {
   input: string;
@@ -94,6 +95,10 @@ export async function ensureRustSilkBinary(
     process.arch,
   ].join("|");
 
+  if (resolvedPathCache.has(cacheKey)) {
+    return resolvedPathCache.get(cacheKey) ?? null;
+  }
+
   if (installCache.has(cacheKey)) {
     return installCache.get(cacheKey) ?? null;
   }
@@ -106,9 +111,14 @@ export async function ensureRustSilkBinary(
     folder,
     isLatest: resolved.isLatest,
     resolvedTag: resolved.resolvedTag,
-  }).finally(() => {
-    installCache.delete(cacheKey);
-  });
+  })
+    .then((result) => {
+      resolvedPathCache.set(cacheKey, result);
+      return result;
+    })
+    .finally(() => {
+      installCache.delete(cacheKey);
+    });
   installCache.set(cacheKey, installPromise);
   return installPromise;
 }

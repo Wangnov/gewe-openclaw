@@ -87,6 +87,9 @@ openclaw onboard
  - `apiBaseUrl`：GeWe API 地址（默认 `https://www.geweapi.com`）。
  - `voiceFfmpegPath`/`videoFfmpegPath`/`videoFfprobePath`：自定义 ffmpeg/ffprobe 路径。
  - `voiceSilkPath`/`voiceSilkArgs`：自定义 silk 编码器路径和参数（不使用自动下载时）。
+ - `voiceSilkPipe`：是否启用 ffmpeg+rust-silk 的 stdin/stdout 管道（默认关闭；失败会回退到临时文件）。
+   - 低频/非高并发且磁盘压力不高时，推荐临时文件方案（更稳定/更快）。
+   - 高频/多并发或磁盘压力大时，推荐 pipe 方案（减少磁盘 IO）。
  - `voiceDecodePath`/`voiceDecodeArgs`/`voiceDecodeOutput`：自定义 silk 解码器（入站语音转写用）。
  - `mediaMaxMb`：上传媒体大小上限（默认 20MB）。
  - `downloadMinDelayMs`/`downloadMaxDelayMs`：入站媒体下载节流。
