@@ -4,6 +4,13 @@
   "type": "module",
   "description": "OpenClaw GeWe channel plugin",
   "license": "MIT",
+  "files": [
+    "index.ts",
+    "openclaw.plugin.json",
+    "assets/gewe-rs_logo.jpeg",
+    "src/**/*.ts",
+    "!src/**/*.test.ts"
+  ],
   "openclaw": {
     "extensions": [
       "./index.ts"
