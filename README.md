@@ -42,7 +42,7 @@ openclaw plugins install ./gewe-openclaw.tgz
 openclaw onboard
 ```
 
-在通道列表中选择 **GeWe**，按提示填写 `token`、`appId`、`webhook` 与 `mediaPublicUrl` 等信息。
+在通道列表中选择 **GeWe**，按提示填写 `token`、`appId`、`webhook`，以及可选的 `mediaPublicUrl`/`S3` 媒体配置。
 
 ### 方式 B：直接编辑配置文件
 
@@ -66,6 +66,15 @@ openclaw onboard
       "mediaPort": 4400,
       "mediaPath": "/gewe-media",
       "mediaPublicUrl": "https://your-public-domain/gewe-media",
+      "s3Enabled": true,
+      "s3Endpoint": "https://s3.amazonaws.com",
+      "s3Region": "us-east-1",
+      "s3Bucket": "your-bucket",
+      "s3AccessKeyId": "<access-key-id>",
+      "s3SecretAccessKey": "<secret-access-key>",
+      "s3UrlMode": "public",
+      "s3PublicBaseUrl": "https://cdn.example.com/gewe-media",
+      "s3KeyPrefix": "gewe-openclaw/outbound",
       "allowFrom": ["wxid_xxx"]
     }
   }
@@ -75,7 +84,15 @@ openclaw onboard
 完整参数说明：
 - `webhookHost/webhookPort/webhookPath`：GeWe 回调入口（需公网可达，常配合 FRP）。
 - `mediaPath`：本地媒体服务的路由前缀（默认 `/gewe-media`）。
-- `mediaPublicUrl`：公网访问地址的“基础前缀”，会自动拼接媒体 ID。通常应与 `mediaPath` 对齐，例如 `mediaPath="/gewe-media"` 时，`mediaPublicUrl` 也应包含 `/gewe-media`。
+- `mediaPublicUrl`：本地反代回退时的公网地址前缀（可选）。配置后会自动拼接媒体 ID；通常应与 `mediaPath` 对齐。
+- `s3Enabled`：是否启用 S3 兼容上传。
+- `s3Endpoint/s3Region/s3Bucket/s3AccessKeyId/s3SecretAccessKey`：S3 兼容服务连接参数。
+- `s3SessionToken`：临时凭证可选字段。
+- `s3ForcePathStyle`：是否启用 path-style（部分 S3 兼容服务需要）。
+- `s3UrlMode`：`public` 或 `presigned`（默认 `public`）。
+- `s3PublicBaseUrl`：`public` 模式下用于拼接可访问 URL（必填）。
+- `s3PresignExpiresSec`：`presigned` 模式签名有效期（默认 3600 秒）。
+- `s3KeyPrefix`：对象 key 前缀（默认 `gewe-openclaw/outbound`）。
 - `allowFrom`：允许私聊触发的微信 ID（或在群里走 allowlist 规则）。
 - `voiceAutoConvert`：自动将音频转为 silk（默认开启；设为 `false` 可关闭）。
 - `silkAutoDownload`：自动下载 `rust-silk`（默认开启；可关闭后自行配置 `voiceSilkPath` / `voiceDecodePath`）。
@@ -93,6 +110,10 @@ openclaw onboard
  - `voiceDecodePath`/`voiceDecodeArgs`/`voiceDecodeOutput`：自定义 silk 解码器（入站语音转写用）。
  - `mediaMaxMb`：上传媒体大小上限（默认 20MB）。
  - `downloadMinDelayMs`/`downloadMaxDelayMs`：入站媒体下载节流。
+
+发送媒体时的 URL 策略：
+- 本地文件：优先上传 S3，失败回退 `mediaPublicUrl` 本地反代。
+- 公网 URL：先尝试原 URL 发送，失败后再尝试上传 S3，仍失败回退本地反代。
 
 > 配置变更后需重启 Gateway。
 
