@@ -9,6 +9,7 @@ import type { OpenClawConfig, ReplyPayload } from "openclaw/plugin-sdk";
 import { extractOriginalFilename, extensionForMime } from "openclaw/plugin-sdk";
 import { CHANNEL_ID } from "./constants.js";
 import { getGeweRuntime } from "./runtime.js";
+import { resolveS3Config, uploadToS3 } from "./s3.js";
 import { ensureRustSilkBinary } from "./silk.js";
 import {
   sendFileGewe,
@@ -43,6 +44,9 @@ type ResolvedMedia = {
   contentType?: string;
   fileName?: string;
   localPath?: string;
+  sourceKind: "remote" | "local";
+  sourceUrl: string;
+  provider: "direct" | "s3" | "proxy";
 };
 
 const LINK_THUMB_MAX_BYTES = 50 * 1024;
@@ -92,6 +96,21 @@ function looksLikeTtsVoiceMediaUrl(value: string): boolean {
 function buildPublicUrl(baseUrl: string, id: string): string {
   const trimmed = baseUrl.replace(/\/$/, "");
   return `${trimmed}/${encodeURIComponent(id)}`;
+}
+
+function hasProxyBase(account: ResolvedGeweAccount): boolean {
+  return Boolean(account.config.mediaPublicUrl?.trim());
+}
+
+function hasS3(account: ResolvedGeweAccount): boolean {
+  return account.config.s3Enabled === true;
+}
+
+function resolveFallbackProviders(account: ResolvedGeweAccount): Array<"s3" | "proxy"> {
+  const providers: Array<"s3" | "proxy"> = [];
+  if (hasS3(account)) providers.push("s3");
+  if (hasProxyBase(account)) providers.push("proxy");
+  return providers;
 }
 
 function resolveMediaMaxBytes(account: ResolvedGeweAccount): number {
@@ -553,11 +572,6 @@ async function stageThumbBuffer(params: {
   fileName?: string;
 }): Promise<string> {
   const core = getGeweRuntime();
-  const publicBase = params.account.config.mediaPublicUrl?.trim();
-  if (!publicBase) {
-    throw new Error("mediaPublicUrl not configured (required for link thumbnails)");
-  }
-
   const normalized = await normalizeThumbBuffer({
     buffer: params.buffer,
     contentType: params.contentType,
@@ -566,6 +580,31 @@ async function stageThumbBuffer(params: {
     throw new Error("link thumbnail exceeds 50KB after resize");
   }
 
+  if (hasS3(params.account)) {
+    try {
+      const s3Config = resolveS3Config(params.account.config);
+      if (!s3Config) throw new Error("s3 not configured");
+      const uploaded = await uploadToS3({
+        config: s3Config,
+        accountId: params.account.accountId,
+        buffer: normalized.buffer,
+        contentType: normalized.contentType,
+        fileName: params.fileName,
+      });
+      return uploaded.url;
+    } catch (err) {
+      if (!hasProxyBase(params.account)) {
+        throw new Error(`s3 thumb upload failed and proxy fallback unavailable: ${String(err)}`);
+      }
+      const logger = core.logging.getChildLogger({ channel: CHANNEL_ID, module: "thumb" });
+      logger.warn?.(`gewe thumb s3 upload failed, fallback proxy: ${String(err)}`);
+    }
+  }
+
+  const publicBase = params.account.config.mediaPublicUrl?.trim();
+  if (!publicBase) {
+    throw new Error("mediaPublicUrl not configured (required for thumbnail fallback)");
+  }
   const saved = await core.channel.media.saveMediaBuffer(
     normalized.buffer,
     normalized.contentType,
@@ -638,26 +677,27 @@ async function stageMedia(params: {
   const core = getGeweRuntime();
   const rawUrl = normalizeMediaToken(params.mediaUrl);
   if (!rawUrl) throw new Error("mediaUrl is empty");
-
-  if (looksLikeHttpUrl(rawUrl) && params.allowRemote) {
+  const isRemote = looksLikeHttpUrl(rawUrl);
+  if (isRemote && params.allowRemote) {
     const contentType = await core.media.detectMime({ filePath: rawUrl });
     const fileName = path.basename(new URL(rawUrl).pathname || "");
-    return { publicUrl: rawUrl, contentType: contentType ?? undefined, fileName };
-  }
-
-  const publicBase = params.account.config.mediaPublicUrl?.trim();
-  if (!publicBase) {
-    throw new Error(
-      "mediaPublicUrl not configured (required for local media or forced proxy)",
-    );
+    return {
+      publicUrl: rawUrl,
+      contentType: contentType ?? undefined,
+      fileName,
+      sourceKind: "remote",
+      sourceUrl: rawUrl,
+      provider: "direct",
+    };
   }
 
   const maxBytes = resolveMediaMaxBytes(params.account);
   let buffer: Buffer;
   let contentType: string | undefined;
   let fileName: string | undefined;
+  let sourceLocalPath: string | undefined;
 
-  if (looksLikeHttpUrl(rawUrl)) {
+  if (isRemote) {
     const fetched = await core.channel.media.fetchRemoteMedia({
       url: rawUrl,
       maxBytes,
@@ -671,6 +711,41 @@ async function stageMedia(params: {
     buffer = await fs.readFile(localPath);
     contentType = await core.media.detectMime({ buffer, filePath: localPath });
     fileName = path.basename(localPath);
+    sourceLocalPath = localPath;
+  }
+
+  if (hasS3(params.account)) {
+    try {
+      const s3Config = resolveS3Config(params.account.config);
+      if (!s3Config) throw new Error("s3 not configured");
+      const uploaded = await uploadToS3({
+        config: s3Config,
+        accountId: params.account.accountId,
+        buffer,
+        contentType,
+        fileName,
+      });
+      return {
+        publicUrl: uploaded.url,
+        contentType,
+        fileName,
+        localPath: sourceLocalPath,
+        sourceKind: isRemote ? "remote" : "local",
+        sourceUrl: rawUrl,
+        provider: "s3",
+      };
+    } catch (err) {
+      if (!hasProxyBase(params.account)) {
+        throw new Error(`s3 upload failed and proxy fallback unavailable: ${String(err)}`);
+      }
+      const logger = core.logging.getChildLogger({ channel: CHANNEL_ID, module: "media" });
+      logger.warn?.(`gewe s3 upload failed, fallback to proxy: ${String(err)}`);
+    }
+  }
+
+  const publicBase = params.account.config.mediaPublicUrl?.trim();
+  if (!publicBase) {
+    throw new Error("mediaPublicUrl not configured (required for proxy fallback)");
   }
 
   const saved = await core.channel.media.saveMediaBuffer(
@@ -684,8 +759,7 @@ async function stageMedia(params: {
   let resolvedId = saved.id;
   let resolvedPath = saved.path;
   const desiredExt =
-    extensionForMime(contentType ?? saved.contentType) ||
-    path.extname(resolvedFileName);
+    extensionForMime(contentType ?? saved.contentType) || path.extname(resolvedFileName);
   if (desiredExt && !path.extname(resolvedId)) {
     const nextId = `${resolvedId}${desiredExt}`;
     const nextPath = path.join(path.dirname(saved.path), nextId);
@@ -697,7 +771,10 @@ async function stageMedia(params: {
     publicUrl: buildPublicUrl(publicBase, resolvedId),
     contentType: contentType ?? saved.contentType,
     fileName: resolvedFileName || resolvedId,
-    localPath: resolvedPath,
+    localPath: sourceLocalPath ?? resolvedPath,
+    sourceKind: isRemote ? "remote" : "local",
+    sourceUrl: rawUrl,
+    provider: "proxy",
   };
 }
 
@@ -714,6 +791,29 @@ async function resolvePublicUrl(params: {
     allowRemote: params.allowRemote,
   });
   return staged.publicUrl;
+}
+
+function shouldRetryWithStagedFallback(params: {
+  originalUrl: string;
+  staged: ResolvedMedia;
+  account: ResolvedGeweAccount;
+}): boolean {
+  if (!looksLikeHttpUrl(params.originalUrl)) return false;
+  if (params.staged.provider !== "direct") return false;
+  return resolveFallbackProviders(params.account).length > 0;
+}
+
+async function stageFallbackFromRemote(params: {
+  account: ResolvedGeweAccount;
+  cfg: OpenClawConfig;
+  originalUrl: string;
+}): Promise<ResolvedMedia> {
+  return await stageMedia({
+    account: params.account,
+    cfg: params.cfg,
+    mediaUrl: params.originalUrl,
+    allowRemote: false,
+  });
 }
 
 export async function deliverGewePayload(params: {
@@ -774,12 +874,34 @@ export async function deliverGewePayload(params: {
       const declaredDuration = resolveVoiceDurationMs(geweData);
       if (isSilkAudio({ contentType, fileName })) {
         if (declaredDuration) {
-          const result = await sendVoiceGewe({
-            account,
-            toWxid,
-            voiceUrl: staged.publicUrl,
-            voiceDuration: declaredDuration,
-          });
+          let result: GeweSendResult;
+          try {
+            result = await sendVoiceGewe({
+              account,
+              toWxid,
+              voiceUrl: staged.publicUrl,
+              voiceDuration: declaredDuration,
+            });
+          } catch (err) {
+            if (!shouldRetryWithStagedFallback({
+              originalUrl: normalizedMediaUrl,
+              staged,
+              account,
+            })) {
+              throw err;
+            }
+            const fallback = await stageFallbackFromRemote({
+              account,
+              cfg,
+              originalUrl: normalizedMediaUrl,
+            });
+            result = await sendVoiceGewe({
+              account,
+              toWxid,
+              voiceUrl: fallback.publicUrl,
+              voiceDuration: declaredDuration,
+            });
+          }
           core.channel.activity.record({
             channel: CHANNEL_ID,
             accountId: account.accountId,
@@ -795,21 +917,56 @@ export async function deliverGewePayload(params: {
         });
         if (converted) {
           const voiceDuration = declaredDuration ?? converted.durationMs;
-          const publicBase = account.config.mediaPublicUrl?.trim();
-          if (!publicBase) {
-            throw new Error("mediaPublicUrl not configured (required for silk voice)");
+          let voiceUrl: string;
+          if (hasS3(account)) {
+            try {
+              const s3Config = resolveS3Config(account.config);
+              if (!s3Config) throw new Error("s3 not configured");
+              const uploaded = await uploadToS3({
+                config: s3Config,
+                accountId: account.accountId,
+                buffer: converted.buffer,
+                contentType: "audio/silk",
+                fileName: "voice.silk",
+              });
+              voiceUrl = uploaded.url;
+            } catch (err) {
+              if (!hasProxyBase(account)) {
+                throw new Error(
+                  `s3 silk upload failed and proxy fallback unavailable: ${String(err)}`,
+                );
+              }
+              const publicBase = account.config.mediaPublicUrl?.trim();
+              if (!publicBase) {
+                throw new Error("mediaPublicUrl not configured (required for silk voice)");
+              }
+              const saved = await core.channel.media.saveMediaBuffer(
+                converted.buffer,
+                "audio/silk",
+                "outbound",
+                resolveMediaMaxBytes(account),
+                "voice.silk",
+              );
+              voiceUrl = buildPublicUrl(publicBase, saved.id);
+            }
+          } else {
+            const publicBase = account.config.mediaPublicUrl?.trim();
+            if (!publicBase) {
+              throw new Error("mediaPublicUrl not configured (required for silk voice)");
+            }
+            const saved = await core.channel.media.saveMediaBuffer(
+              converted.buffer,
+              "audio/silk",
+              "outbound",
+              resolveMediaMaxBytes(account),
+              "voice.silk",
+            );
+            voiceUrl = buildPublicUrl(publicBase, saved.id);
           }
-          const saved = await core.channel.media.saveMediaBuffer(
-            converted.buffer,
-            "audio/silk",
-            "outbound",
-            resolveMediaMaxBytes(account),
-            "voice.silk",
-          );
           const result = await sendVoiceGewe({
             account,
             toWxid,
-            voiceUrl: buildPublicUrl(publicBase, saved.id),
+            voiceUrl,
             voiceDuration,
           });
           core.channel.activity.record({
@@ -824,11 +981,32 @@ export async function deliverGewePayload(params: {
     }
 
     if (!forceFile && kind === "image") {
-      const result = await sendImageGewe({
-        account,
-        toWxid,
-        imgUrl: staged.publicUrl,
-      });
+      let result: GeweSendResult;
+      try {
+        result = await sendImageGewe({
+          account,
+          toWxid,
+          imgUrl: staged.publicUrl,
+        });
+      } catch (err) {
+        if (!shouldRetryWithStagedFallback({
+          originalUrl: normalizedMediaUrl,
+          staged,
+          account,
+        })) {
+          throw err;
+        }
+        const fallback = await stageFallbackFromRemote({
+          account,
+          cfg,
+          originalUrl: normalizedMediaUrl,
+        });
+        result = await sendImageGewe({
+          account,
+          toWxid,
+          imgUrl: fallback.publicUrl,
+        });
+      }
       core.channel.activity.record({
         channel: CHANNEL_ID,
         accountId: account.accountId,
@@ -902,6 +1080,11 @@ export async function deliverGewePayload(params: {
           url: thumbUrl,
           allowRemote: true,
         });
+        const canRetryMediaFallback = shouldRetryWithStagedFallback({
+          originalUrl: normalizedMediaUrl,
+          staged: stagedVideo,
+          account,
+        });
         try {
           const result = await sendVideoGewe({
             account,
@@ -918,6 +1101,33 @@ export async function deliverGewePayload(params: {
           statusSink?.({ lastOutboundAt: Date.now() });
           return result;
         } catch (err) {
+          if (canRetryMediaFallback) {
+            const fallbackVideo = await stageFallbackFromRemote({
+              account,
+              cfg,
+              originalUrl: normalizedMediaUrl,
+            });
+            const fallbackThumb = await resolvePublicUrl({
+              account,
+              cfg,
+              url: thumbUrl,
+              allowRemote: false,
+            });
+            const result = await sendVideoGewe({
+              account,
+              toWxid,
+              videoUrl: fallbackVideo.publicUrl,
+              thumbUrl: fallbackThumb,
+              videoDuration: Math.floor(videoDuration),
+            });
+            core.channel.activity.record({
+              channel: CHANNEL_ID,
+              accountId: account.accountId,
+              direction: "outbound",
+            });
+            statusSink?.({ lastOutboundAt: Date.now() });
+            return result;
+          }
           if (fallbackThumbUrl && fallbackThumbUrl !== thumbUrl) {
             logger.warn?.(
               `gewe video send failed with primary thumb, retrying fallback: ${String(err)}`,
@@ -952,12 +1162,34 @@ export async function deliverGewePayload(params: {
       geweData?.fileName ||
       fileName ||
       (contentType ? `file${contentType.includes("/") ? `.${contentType.split("/")[1]}` : ""}` : "file");
-    const result = await sendFileGewe({
-      account,
-      toWxid,
-      fileUrl: staged.publicUrl,
-      fileName: fallbackName,
-    });
+    let result: GeweSendResult;
+    try {
+      result = await sendFileGewe({
+        account,
+        toWxid,
+        fileUrl: staged.publicUrl,
+        fileName: fallbackName,
+      });
+    } catch (err) {
+      if (!shouldRetryWithStagedFallback({
+        originalUrl: normalizedMediaUrl,
+        staged,
+        account,
+      })) {
+        throw err;
+      }
+      const fallback = await stageFallbackFromRemote({
+        account,
+        cfg,
+        originalUrl: normalizedMediaUrl,
+      });
+      result = await sendFileGewe({
+        account,
+        toWxid,
+        fileUrl: fallback.publicUrl,
+        fileName: fallbackName,
+      });
+    }
     core.channel.activity.record({
       channel: CHANNEL_ID,
       accountId: account.accountId,

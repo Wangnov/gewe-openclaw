@@ -33,6 +33,18 @@ export type GeweAccountConfig = {
   mediaPath?: string;
   mediaPublicUrl?: string;
   mediaMaxMb?: number;
+  s3Enabled?: boolean;
+  s3Endpoint?: string;
+  s3Region?: string;
+  s3Bucket?: string;
+  s3AccessKeyId?: string;
+  s3SecretAccessKey?: string;
+  s3SessionToken?: string;
+  s3ForcePathStyle?: boolean;
+  s3PublicBaseUrl?: string;
+  s3KeyPrefix?: string;
+  s3UrlMode?: "public" | "presigned";
+  s3PresignExpiresSec?: number;
   voiceAutoConvert?: boolean;
   voiceFfmpegPath?: string;
   voiceSilkPath?: string;

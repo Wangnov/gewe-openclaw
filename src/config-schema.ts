@@ -40,6 +40,18 @@ export const GeweAccountSchemaBase = z
     mediaPath: z.string().optional(),
     mediaPublicUrl: z.string().optional(),
     mediaMaxMb: z.number().positive().optional(),
+    s3Enabled: z.boolean().optional(),
+    s3Endpoint: z.string().optional(),
+    s3Region: z.string().optional(),
+    s3Bucket: z.string().optional(),
+    s3AccessKeyId: z.string().optional(),
+    s3SecretAccessKey: z.string().optional(),
+    s3SessionToken: z.string().optional(),
+    s3ForcePathStyle: z.boolean().optional(),
+    s3PublicBaseUrl: z.string().optional(),
+    s3KeyPrefix: z.string().optional(),
+    s3UrlMode: z.enum(["public", "presigned"]).optional(),
+    s3PresignExpiresSec: z.number().int().positive().optional(),
     voiceAutoConvert: z.boolean().optional(),
     voiceFfmpegPath: z.string().optional(),
     voiceSilkPath: z.string().optional(),
@@ -84,6 +96,37 @@ export const GeweAccountSchemaBase = z
         path: ["downloadMaxDelayMs"],
         message: "downloadMaxDelayMs must be >= downloadMinDelayMs",
       });
+    }
+
+    if (value.s3Enabled === true) {
+      const required: Array<keyof typeof value> = [
+        "s3Endpoint",
+        "s3Region",
+        "s3Bucket",
+        "s3AccessKeyId",
+        "s3SecretAccessKey",
+      ];
+      for (const key of required) {
+        const raw = value[key];
+        if (typeof raw !== "string" || !raw.trim()) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: [key],
+            message: `${String(key)} is required when s3Enabled=true`,
+          });
+        }
+      }
+      const mode = value.s3UrlMode ?? "public";
+      if (mode === "public") {
+        const base = value.s3PublicBaseUrl?.trim();
+        if (!base) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["s3PublicBaseUrl"],
+            message: "s3PublicBaseUrl is required when s3UrlMode=public",
+          });
+        }
+      }
     }
   });
 

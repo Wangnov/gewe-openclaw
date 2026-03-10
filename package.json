@@ -1,6 +1,6 @@
 {
   "name": "gewe-openclaw",
-  "version": "2026.2.4",
+  "version": "2026.3.2",
   "type": "module",
   "description": "OpenClaw GeWe channel plugin",
   "license": "MIT",
@@ -32,6 +32,8 @@
     }
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.922.0",
+    "@aws-sdk/s3-request-presigner": "^3.922.0",
     "zod": "^4.3.6"
   },
   "peerDependencies": {

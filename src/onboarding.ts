@@ -171,7 +171,7 @@ export const geweOnboarding: GeweOnboardingAdapter = {
         "You will need:",
         "- GeWe token + appId",
         "- Public webhook endpoint (FRP or reverse proxy)",
-        "- Public media base URL (for sending voice/media)",
+        "- Public media base URL (optional proxy fallback)",
       ].join("\n"),
       "GeWe setup",
     );
@@ -217,8 +217,108 @@ export const geweOnboarding: GeweOnboardingAdapter = {
       message: "Media public URL (prefix)",
       placeholder: "https://your-domain/gewe-media",
       initialValue: existing.mediaPublicUrl,
-      validate: (value) => (value.trim() ? undefined : "Required"),
     });
+
+    const enableS3 = await ctx.prompter.confirm({
+      message: "Enable S3-compatible media delivery?",
+      initialValue: existing.s3Enabled === true,
+    });
+    let s3Patch: Partial<GeweAccountConfig> = {};
+    if (enableS3) {
+      const s3Endpoint = await ctx.prompter.text({
+        message: "S3 endpoint",
+        placeholder: "https://s3.amazonaws.com",
+        initialValue: existing.s3Endpoint,
+        validate: (value) => (value.trim() ? undefined : "Required"),
+      });
+      const s3Region = await ctx.prompter.text({
+        message: "S3 region",
+        placeholder: "us-east-1",
+        initialValue: existing.s3Region,
+        validate: (value) => (value.trim() ? undefined : "Required"),
+      });
+      const s3Bucket = await ctx.prompter.text({
+        message: "S3 bucket",
+        initialValue: existing.s3Bucket,
+        validate: (value) => (value.trim() ? undefined : "Required"),
+      });
+      const s3AccessKeyId = await ctx.prompter.text({
+        message: "S3 access key id",
+        initialValue: existing.s3AccessKeyId,
+        validate: (value) => (value.trim() ? undefined : "Required"),
+      });
+      const s3SecretAccessKey = await ctx.prompter.text({
+        message: "S3 secret access key",
+        initialValue: existing.s3SecretAccessKey,
+        validate: (value) => (value.trim() ? undefined : "Required"),
+      });
+      const s3SessionToken = await ctx.prompter.text({
+        message: "S3 session token (optional)",
+        initialValue: existing.s3SessionToken,
+      });
+      const s3ForcePathStyle = await ctx.prompter.confirm({
+        message: "Use path-style for S3 endpoint?",
+        initialValue: existing.s3ForcePathStyle === true,
+      });
+      const s3KeyPrefix = await ctx.prompter.text({
+        message: "S3 key prefix (optional)",
+        placeholder: "gewe-openclaw/outbound",
+        initialValue: existing.s3KeyPrefix,
+      });
+      const s3UrlMode = await ctx.prompter.select({
+        message: "S3 URL mode",
+        options: [
+          { value: "public", label: "public (default)" },
+          { value: "presigned", label: "presigned" },
+        ],
+        initialValue: existing.s3UrlMode ?? "public",
+      });
+      const s3PublicBaseUrl =
+        s3UrlMode === "public"
+          ? await ctx.prompter.text({
+              message: "S3 public base URL",
+              placeholder: "https://cdn.example.com/gewe-media",
+              initialValue: existing.s3PublicBaseUrl,
+              validate: (value) => (value.trim() ? undefined : "Required"),
+            })
+          : await ctx.prompter.text({
+              message: "S3 public base URL (optional in presigned mode)",
+              initialValue: existing.s3PublicBaseUrl,
+            });
+      const s3PresignExpiresSecRaw =
+        s3UrlMode === "presigned"
+          ? await ctx.prompter.text({
+              message: "Presigned URL expire seconds",
+              initialValue: String(existing.s3PresignExpiresSec ?? 3600),
+              validate: (value) => {
+                const parsed = Number(value);
+                if (!Number.isInteger(parsed) || parsed <= 0) {
+                  return "Must be a positive integer";
+                }
+                return undefined;
+              },
+            })
+          : "";
+      s3Patch = {
+        s3Enabled: true,
+        s3Endpoint: s3Endpoint.trim(),
+        s3Region: s3Region.trim(),
+        s3Bucket: s3Bucket.trim(),
+        s3AccessKeyId: s3AccessKeyId.trim(),
+        s3SecretAccessKey: s3SecretAccessKey.trim(),
+        s3SessionToken: s3SessionToken.trim() || undefined,
+        s3ForcePathStyle,
+        s3KeyPrefix: s3KeyPrefix.trim() || undefined,
+        s3UrlMode,
+        s3PublicBaseUrl: s3PublicBaseUrl.trim() || undefined,
+        s3PresignExpiresSec:
+          s3UrlMode === "presigned" ? Number(s3PresignExpiresSecRaw) : undefined,
+      };
+    } else {
+      s3Patch = {
+        s3Enabled: false,
+      };
+    }
 
     let allowFrom = existing.allowFrom;
     let dmPolicy: GeweAccountConfig["dmPolicy"] | undefined;
@@ -255,7 +355,8 @@ export const geweOnboarding: GeweOnboardingAdapter = {
       mediaHost: existing.mediaHost ?? DEFAULT_MEDIA_HOST,
       mediaPort: existing.mediaPort ?? DEFAULT_MEDIA_PORT,
       mediaPath: existing.mediaPath ?? DEFAULT_MEDIA_PATH,
-      mediaPublicUrl: mediaPublicUrl.trim(),
+      mediaPublicUrl: mediaPublicUrl.trim() || undefined,
+      ...s3Patch,
       ...(allowFrom ? { allowFrom } : {}),
       ...(dmPolicy ? { dmPolicy } : {}),
     });
