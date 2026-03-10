@@ -9,6 +9,7 @@ import { logInboundDrop, resolveControlCommandGate } from "openclaw/plugin-sdk";
 import type { GeweDownloadQueue } from "./download-queue.js";
 import { downloadGeweFile, downloadGeweImage, downloadGeweVideo, downloadGeweVoice } from "./download.js";
 import { deliverGewePayload } from "./delivery.js";
+import { resolveGeweReplyOptions } from "./reply-options.js";
 import { getGeweRuntime } from "./runtime.js";
 import { ensureRustSilkBinary } from "./silk.js";
 import {
@@ -428,6 +429,7 @@ async function dispatchGeweInbound(params: {
   await core.channel.reply.dispatchReplyWithBufferedBlockDispatcher({
     ctx: ctxPayload,
     cfg: config as OpenClawConfig,
+    replyOptions: resolveGeweReplyOptions(account),
     dispatcherOptions: {
       deliver: async (payload: ReplyPayload) => {
         await deliverGewePayload({
