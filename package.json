@@ -8,6 +8,7 @@
     "index.ts",
     "openclaw.plugin.json",
     "assets/gewe-rs_logo.jpeg",
+    "skills/**",
     "src/**/*.ts",
     "!src/**/*.test.ts"
   ],

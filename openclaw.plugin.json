@@ -3,6 +3,9 @@
   "channels": [
     "gewe-openclaw"
   ],
+  "skills": [
+    "./skills"
+  ],
   "configSchema": {
     "type": "object",
     "additionalProperties": false,
