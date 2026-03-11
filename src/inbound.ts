@@ -6,6 +6,10 @@ import path from "node:path";
 import type { OpenClawConfig, ReplyPayload, RuntimeEnv } from "openclaw/plugin-sdk";
 import { logInboundDrop, resolveControlCommandGate } from "openclaw/plugin-sdk";
 
+import {
+  buildGeweInboundMediaPayload,
+  buildGeweInboundMessageMeta,
+} from "./inbound-batch.js";
 import type { GeweDownloadQueue } from "./download-queue.js";
 import { downloadGeweFile, downloadGeweImage, downloadGeweVideo, downloadGeweVoice } from "./download.js";
 import { deliverGewePayload } from "./delivery.js";
@@ -37,7 +41,19 @@ type PreparedInbound = {
   storePath: string;
   toWxid: string;
   messageSid: string;
+  messageSids?: string[];
+  messageSidFirst?: string;
+  messageSidLast?: string;
   timestamp?: number;
+};
+
+type NormalizedInboundEntry = {
+  message: GeweInboundMessage;
+  rawBody: string;
+  download?: {
+    msgType: number;
+    xml: string;
+  };
 };
 
 const DEFAULT_VOICE_SAMPLE_RATE = 24000;
@@ -364,15 +380,145 @@ function resolveMediaMaxBytes(account: ResolvedGeweAccount): number {
   return 20 * 1024 * 1024;
 }
 
+function resolveGroupConversationId(message: GeweInboundMessage): string | undefined {
+  if (message.fromId.endsWith("@chatroom")) {
+    return message.fromId;
+  }
+  if (message.toId.endsWith("@chatroom")) {
+    return message.toId;
+  }
+  return undefined;
+}
+
+function normalizeInboundEntry(params: {
+  message: GeweInboundMessage;
+  runtime: RuntimeEnv;
+}): NormalizedInboundEntry | null {
+  const { message, runtime } = params;
+  const msgType = message.msgType;
+  if (![1, 3, 34, 43, 49].includes(msgType)) {
+    runtime.log?.(`gewe: skip unsupported msgType ${msgType}`);
+    return null;
+  }
+
+  const { text, xml } = resolveInboundText(message);
+  const rawBodyCandidate = (msgType === 1 ? text.trim() : "") || resolveMediaPlaceholder(msgType);
+  if (!rawBodyCandidate.trim()) {
+    runtime.log?.("gewe: skip empty message");
+    return null;
+  }
+
+  if (msgType === 49 && xml) {
+    const appType = extractAppMsgType(xml);
+    if (appType === 5) {
+      return {
+        message,
+        rawBody: resolveLinkBody(xml) || rawBodyCandidate,
+      };
+    }
+    if (appType === 74) {
+      runtime.log?.("gewe: file notification received (skip download)");
+      return null;
+    }
+    if (appType !== 6) {
+      runtime.log?.(`gewe: unhandled appmsg type ${appType ?? "unknown"}`);
+      return null;
+    }
+  }
+
+  return {
+    message,
+    rawBody: rawBodyCandidate,
+    download:
+      (msgType === 3 || msgType === 34 || msgType === 43 || msgType === 49) && xml
+        ? { msgType, xml }
+        : undefined,
+  };
+}
+
+async function downloadInboundMediaEntry(params: {
+  entry: NormalizedInboundEntry;
+  account: ResolvedGeweAccount;
+  maxBytes: number;
+}): Promise<{ path: string; contentType?: string | null } | null> {
+  const { entry, account, maxBytes } = params;
+  const core = getGeweRuntime();
+  if (!entry.download) {
+    return null;
+  }
+
+  const { msgType, xml } = entry.download;
+  let fileUrl: string | null = null;
+  if (msgType === 3) {
+    try {
+      fileUrl = await downloadGeweImage({ account, xml, type: 2 });
+    } catch {
+      try {
+        fileUrl = await downloadGeweImage({ account, xml, type: 1 });
+      } catch {
+        fileUrl = await downloadGeweImage({ account, xml, type: 3 });
+      }
+    }
+  } else if (msgType === 34) {
+    fileUrl = await downloadGeweVoice({
+      account,
+      xml,
+      msgId: Number(entry.message.messageId),
+    });
+  } else if (msgType === 43) {
+    fileUrl = await downloadGeweVideo({ account, xml });
+  } else if (msgType === 49) {
+    fileUrl = await downloadGeweFile({ account, xml });
+  }
+
+  if (!fileUrl) {
+    return null;
+  }
+
+  const fetched = await core.channel.media.fetchRemoteMedia({
+    url: fileUrl,
+    maxBytes,
+    filePathHint: fileUrl,
+  });
+  let buffer = fetched.buffer;
+  let contentType = fetched.contentType;
+  let originalFilename = msgType === 49 ? extractFileName(xml) : fetched.fileName;
+
+  if (msgType === 34 && looksLikeSilkVoice({ buffer, contentType, fileName: originalFilename })) {
+    const decoded = await decodeSilkVoice({
+      account,
+      buffer,
+      fileName: originalFilename,
+    });
+    if (decoded) {
+      buffer = decoded.buffer;
+      contentType = decoded.contentType;
+      originalFilename = decoded.fileName;
+    }
+  }
+
+  const saved = await core.channel.media.saveMediaBuffer(
+    buffer,
+    contentType,
+    "inbound",
+    maxBytes,
+    originalFilename,
+  );
+  return {
+    path: saved.path,
+    contentType: saved.contentType,
+  };
+}
+
 async function dispatchGeweInbound(params: {
   prepared: PreparedInbound;
   account: ResolvedGeweAccount;
   config: CoreConfig;
   runtime: RuntimeEnv;
-  media?: { path?: string; contentType?: string };
+  mediaList?: Array<{ path: string; contentType?: string | null }>;
   statusSink?: (patch: { lastInboundAt?: number; lastOutboundAt?: number }) => void;
 }): Promise<void> {
-  const { prepared, account, config, runtime, media, statusSink } = params;
+  const { prepared, account, config, runtime, mediaList = [], statusSink } = params;
   const core = getGeweRuntime();
   const envelopeOptions = core.channel.reply.resolveEnvelopeFormatOptions(config as OpenClawConfig);
   const previousTimestamp = core.channel.session.readSessionUpdatedAt({
@@ -387,6 +533,7 @@ async function dispatchGeweInbound(params: {
     envelope: envelopeOptions,
     body: prepared.rawBody,
   });
+  const mediaPayload = buildGeweInboundMediaPayload(mediaList);
 
   const ctxPayload = core.channel.reply.finalizeInboundContext({
     Body: body,
@@ -409,9 +556,10 @@ async function dispatchGeweInbound(params: {
     Surface: CHANNEL_ID,
     MessageSid: prepared.messageSid,
     MessageSidFull: prepared.messageSid,
-    MediaPath: media?.path,
-    MediaType: media?.contentType,
-    MediaUrl: media?.path,
+    MessageSids: prepared.messageSids,
+    MessageSidFirst: prepared.messageSidFirst,
+    MessageSidLast: prepared.messageSidLast,
+    ...mediaPayload,
     GroupSystemPrompt: prepared.groupSystemPrompt,
     OriginatingChannel: CHANNEL_ID,
     OriginatingTo: `${CHANNEL_ID}:${prepared.toWxid}`,
@@ -455,19 +603,52 @@ export async function handleGeweInbound(params: {
   downloadQueue: GeweDownloadQueue;
   statusSink?: (patch: { lastInboundAt?: number; lastOutboundAt?: number }) => void;
 }): Promise<void> {
-  const { message, account, config, runtime, downloadQueue, statusSink } = params;
-  const core = getGeweRuntime();
+  await handleGeweInboundBatch({
+    messages: [params.message],
+    account: params.account,
+    config: params.config,
+    runtime: params.runtime,
+    downloadQueue: params.downloadQueue,
+    statusSink: params.statusSink,
+  });
+}
 
-  const msgType = message.msgType;
-  if (![1, 3, 34, 43, 49].includes(msgType)) {
-    runtime.log?.(`gewe: skip unsupported msgType ${msgType}`);
+export async function handleGeweInboundBatch(params: {
+  messages: GeweInboundMessage[];
+  account: ResolvedGeweAccount;
+  config: CoreConfig;
+  runtime: RuntimeEnv;
+  downloadQueue: GeweDownloadQueue;
+  statusSink?: (patch: { lastInboundAt?: number; lastOutboundAt?: number }) => void;
+}): Promise<void> {
+  const { messages, account, config, runtime, downloadQueue, statusSink } = params;
+  if (messages.length === 0) {
     return;
   }
-  const isGroup = message.isGroupChat;
-  const senderId = message.senderId;
-  const senderName = message.senderName;
-  const groupId = isGroup ? message.fromId : undefined;
-  const toWxid = isGroup ? message.fromId : senderId;
+
+  const core = getGeweRuntime();
+  const entries = messages
+    .map((message) => normalizeInboundEntry({ message, runtime }))
+    .filter((entry): entry is NormalizedInboundEntry => Boolean(entry));
+  if (entries.length === 0) {
+    return;
+  }
+
+  const lastMessage = entries.at(-1)!.message;
+  const isGroup = lastMessage.isGroupChat;
+  const senderId = lastMessage.senderId;
+  const senderName = lastMessage.senderName;
+  const groupId = isGroup ? resolveGroupConversationId(lastMessage) : undefined;
+  const toWxid = isGroup ? groupId ?? lastMessage.fromId : senderId;
+  const rawBodyCandidate = entries
+    .map((entry) => entry.rawBody.trim())
+    .filter(Boolean)
+    .join("\n")
+    .trim();
+  if (!rawBodyCandidate) {
+    runtime.log?.("gewe: skip empty batch");
+    return;
+  }
 
   statusSink?.({ lastInboundAt: Date.now() });
 
@@ -515,14 +696,6 @@ export async function handleGeweInbound(params: {
     senderId,
     senderName,
   }).allowed;
-  const { text } = resolveInboundText(message);
-  const isPlainText = msgType === 1;
-  const rawBodyCandidate =
-    (isPlainText ? text.trim() : "") || resolveMediaPlaceholder(msgType);
-  if (!rawBodyCandidate.trim()) {
-    runtime.log?.("gewe: skip empty message");
-    return;
-  }
   const hasControlCommand = core.channel.text.hasControlCommand(
     rawBodyCandidate,
     config as OpenClawConfig,
@@ -639,6 +812,7 @@ export async function handleGeweInbound(params: {
   const storePath = core.channel.session.resolveStorePath(config.session?.store, {
     agentId: route.agentId,
   });
+  const messageMeta = buildGeweInboundMessageMeta(entries.map((entry) => entry.message));
 
   const prepared: PreparedInbound = {
     rawBody: rawBodyCandidate,
@@ -652,8 +826,11 @@ export async function handleGeweInbound(params: {
     route,
     storePath,
     toWxid,
-    messageSid: message.newMessageId,
-    timestamp: message.timestamp,
+    messageSid: messageMeta.messageSid ?? lastMessage.newMessageId,
+    messageSids: messageMeta.messageSids,
+    messageSidFirst: messageMeta.messageSidFirst,
+    messageSidLast: messageMeta.messageSidLast,
+    timestamp: messageMeta.timestamp ?? lastMessage.timestamp,
   };
 
   core.channel.activity.record({
@@ -662,133 +839,55 @@ export async function handleGeweInbound(params: {
     direction: "inbound",
   });
 
-  const xml = message.xml;
-  const maxBytes = resolveMediaMaxBytes(account);
-  const needsDownload =
-    msgType === 3 || msgType === 34 || msgType === 43 || msgType === 49;
-
-  if (msgType === 49 && xml) {
-    const appType = extractAppMsgType(xml);
-    if (appType === 5) {
-      const linkBody = resolveLinkBody(xml);
-      prepared.rawBody = linkBody || prepared.rawBody;
-      await dispatchGeweInbound({
-        prepared,
-        account,
-        config,
-        runtime,
-        statusSink,
-      });
-      return;
-    }
-    if (appType === 74) {
-      runtime.log?.("gewe: file notification received (skip download)");
-      return;
-    }
-    if (appType !== 6) {
-      runtime.log?.(`gewe: unhandled appmsg type ${appType ?? "unknown"}`);
-      return;
-    }
-  }
-
-  if (!needsDownload || !xml) {
+  const downloadEntries = entries.filter((entry) => Boolean(entry.download));
+  if (downloadEntries.length === 0) {
     await dispatchGeweInbound({
       prepared,
       account,
       config,
       runtime,
       statusSink,
+      mediaList: [],
     });
     return;
   }
 
-  const jobKey = `${message.appId}:${message.newMessageId}`;
+  const maxBytes = resolveMediaMaxBytes(account);
+  const messageIds = entries.map((entry) => entry.message.newMessageId);
+  const jobKey = `${lastMessage.appId}:${messageIds[0]}:${messageIds.at(-1)}:${messageIds.length}`;
   const enqueued = downloadQueue.enqueue({
     key: jobKey,
     run: async () => {
-      try {
-        let fileUrl: string | null = null;
-        if (msgType === 3) {
-          try {
-            fileUrl = await downloadGeweImage({ account, xml, type: 2 });
-          } catch {
-            try {
-              fileUrl = await downloadGeweImage({ account, xml, type: 1 });
-            } catch {
-              fileUrl = await downloadGeweImage({ account, xml, type: 3 });
-            }
-          }
-        } else if (msgType === 34) {
-          fileUrl = await downloadGeweVoice({ account, xml, msgId: Number(message.messageId) });
-        } else if (msgType === 43) {
-          fileUrl = await downloadGeweVideo({ account, xml });
-        } else if (msgType === 49) {
-          fileUrl = await downloadGeweFile({ account, xml });
-        }
-
-        if (!fileUrl) {
-          await dispatchGeweInbound({
-            prepared,
+      const mediaList: Array<{ path: string; contentType?: string | null }> = [];
+      for (const entry of downloadEntries) {
+        try {
+          const saved = await downloadInboundMediaEntry({
+            entry,
             account,
-            config,
-            runtime,
-            statusSink,
+            maxBytes,
           });
-          return;
-        }
-
-        const fetched = await core.channel.media.fetchRemoteMedia({
-          url: fileUrl,
-          maxBytes,
-          filePathHint: fileUrl,
-        });
-        let buffer = fetched.buffer;
-        let contentType = fetched.contentType;
-        let originalFilename = msgType === 49 ? extractFileName(xml) : fetched.fileName;
-
-        if (msgType === 34 && looksLikeSilkVoice({ buffer, contentType, fileName: originalFilename })) {
-          const decoded = await decodeSilkVoice({
-            account,
-            buffer,
-            fileName: originalFilename,
-          });
-          if (decoded) {
-            buffer = decoded.buffer;
-            contentType = decoded.contentType;
-            originalFilename = decoded.fileName;
+          if (saved) {
+            mediaList.push(saved);
           }
+        } catch (err) {
+          runtime.error?.(
+            `gewe: media download failed for ${entry.message.newMessageId}: ${String(err)}`,
+          );
         }
-
-        const saved = await core.channel.media.saveMediaBuffer(
-          buffer,
-          contentType,
-          "inbound",
-          maxBytes,
-          originalFilename,
-        );
-
-        await dispatchGeweInbound({
-          prepared,
-          account,
-          config,
-          runtime,
-          statusSink,
-          media: { path: saved.path, contentType: saved.contentType },
-        });
-      } catch (err) {
-        runtime.error?.(`gewe: media download failed: ${String(err)}`);
-        await dispatchGeweInbound({
-          prepared,
-          account,
-          config,
-          runtime,
-          statusSink,
-        });
       }
+
+      await dispatchGeweInbound({
+        prepared,
+        account,
+        config,
+        runtime,
+        statusSink,
+        mediaList,
+      });
     },
   });
 
   if (!enqueued) {
-    runtime.log?.(`gewe: duplicate message ${jobKey} skipped`);
+    runtime.log?.(`gewe: duplicate inbound batch ${jobKey} skipped`);
   }
 }

@@ -1,10 +1,11 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 
-import type { RuntimeEnv } from "openclaw/plugin-sdk";
+import type { OpenClawConfig, RuntimeEnv } from "openclaw/plugin-sdk";
 
 import { resolveGeweAccount } from "./accounts.js";
 import { GeweDownloadQueue } from "./download-queue.js";
-import { handleGeweInbound } from "./inbound.js";
+import { createGeweInboundDebouncer } from "./inbound-batch.js";
+import { handleGeweInboundBatch } from "./inbound.js";
 import { createGeweMediaServer, DEFAULT_MEDIA_HOST, DEFAULT_MEDIA_PATH, DEFAULT_MEDIA_PORT } from "./media-server.js";
 import { getGeweRuntime } from "./runtime.js";
 import type {
@@ -280,6 +281,22 @@ export async function monitorGeweProvider(
     minDelayMs: account.config.downloadMinDelayMs,
     maxDelayMs: account.config.downloadMaxDelayMs,
   });
+  const debouncer = createGeweInboundDebouncer({
+    cfg: cfg as OpenClawConfig,
+    accountId: account.accountId,
+    isControlCommand: (text) => core.channel.text.hasControlCommand(text, cfg as OpenClawConfig),
+    onFlush: async (messages) => {
+      await handleGeweInboundBatch({
+        messages,
+        account,
+        config: cfg,
+        runtime,
+        downloadQueue,
+        statusSink: opts.statusSink,
+      });
+    },
+    onError: (err) => runtime.error?.(`gewe inbound debounce flush failed: ${String(err)}`),
+  });
 
   const webhookServer = createGeweWebhookServer({
     port,
@@ -292,15 +309,9 @@ export async function monitorGeweProvider(
 
       const dedupeKey = `${message.appId}:${message.newMessageId}`;
       if (isDuplicate(dedupeKey)) return;
+      opts.statusSink?.({ lastInboundAt: Date.now() });
 
-      await handleGeweInbound({
-        message,
-        account,
-        config: cfg,
-        runtime,
-        downloadQueue,
-        statusSink: opts.statusSink,
-      });
+      await debouncer.enqueue(message);
     },
     onError: (err) => runtime.error?.(`gewe webhook error: ${String(err)}`),
     abortSignal: opts.abortSignal,
@@ -340,6 +351,7 @@ export async function monitorGeweProvider(
   });
 
   const stop = () => {
+    void debouncer.flushAll();
     webhookServer.stop();
     if (mediaStop) mediaStop();
     resolveRunning?.();
