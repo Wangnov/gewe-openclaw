@@ -9,6 +9,7 @@ import { pipeline } from "node:stream/promises";
 import type { ResolvedGeweAccount } from "./types.js";
 import { getGeweRuntime } from "./runtime.js";
 import { CHANNEL_ID } from "./constants.js";
+import { resolveOpenClawStateDir, resolveUserPath } from "./state-paths.js";
 
 const DEFAULT_SILK_VERSION = "latest";
 const DEFAULT_SILK_BASE_URL =
@@ -137,7 +138,7 @@ async function installRustSilk(params: {
   const customInstall = params.account.config.silkInstallDir?.trim();
   const installRoot = customInstall
     ? resolveUserPath(customInstall)
-    : path.join(resolveConfigDir(), "tools", "rust-silk");
+    : path.join(resolveOpenClawStateDir(), "tools", "rust-silk");
   const installDir = path.join(installRoot, params.folder);
   const binaryPath = path.join(installDir, params.asset.binary);
 
@@ -436,40 +437,4 @@ async function cleanupOldVersions(
     tasks.push(fs.rm(fullPath, { recursive: true, force: true }).then(() => {}));
   }
   if (tasks.length) await Promise.all(tasks);
-}
-
-function resolveConfigDir(
-  env: NodeJS.ProcessEnv = process.env,
-  homedir: () => string = os.homedir,
-): string {
-  const override = env.OPENCLAW_STATE_DIR?.trim() || env.CLAWDBOT_STATE_DIR?.trim();
-  if (override) return resolveUserPath(override);
-  const legacyDirs = [".clawdbot", ".moltbot", ".moldbot"].map((dir) =>
-    path.join(homedir(), dir),
-  );
-  const newDir = path.join(homedir(), ".openclaw");
-  try {
-    if (existsSync(newDir)) return newDir;
-    const existingLegacy = legacyDirs.find((dir) => {
-      try {
-        return existsSync(dir);
-      } catch {
-        return false;
-      }
-    });
-    if (existingLegacy) return existingLegacy;
-  } catch {
-    // best-effort
-  }
-  return newDir;
-}
-
-function resolveUserPath(input: string): string {
-  const trimmed = input.trim();
-  if (!trimmed) return trimmed;
-  if (trimmed.startsWith("~")) {
-    const expanded = trimmed.replace(/^~(?=$|[\\/])/, os.homedir());
-    return path.resolve(expanded);
-  }
-  return path.resolve(trimmed);
 }
