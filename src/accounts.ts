@@ -3,20 +3,15 @@ import { readFileSync } from "node:fs";
 import { DEFAULT_ACCOUNT_ID, normalizeAccountId } from "openclaw/plugin-sdk";
 
 import { CHANNEL_CONFIG_KEY } from "./constants.js";
-import type { CoreConfig, GeweAccountConfig, GeweAppIdSource, GeweTokenSource } from "./types.js";
+import type {
+  CoreConfig,
+  GeweAccountConfig,
+  GeweAppIdSource,
+  GeweTokenSource,
+  ResolvedGeweAccount,
+} from "./types.js";
 
 const DEFAULT_API_BASE_URL = "https://www.geweapi.com";
-
-export type ResolvedGeweAccount = {
-  accountId: string;
-  enabled: boolean;
-  name?: string;
-  token: string;
-  tokenSource: GeweTokenSource;
-  appId: string;
-  appIdSource: GeweAppIdSource;
-  config: GeweAccountConfig;
-};
 
 function listConfiguredAccountIds(cfg: CoreConfig): string[] {
   const accounts = cfg.channels?.[CHANNEL_CONFIG_KEY]?.accounts;
@@ -59,11 +54,24 @@ function mergeGeweAccountConfig(cfg: CoreConfig, accountId: string): GeweAccount
   return { ...base, ...account };
 }
 
+function normalizeUrl(url?: string): string | undefined {
+  const trimmed = url?.trim();
+  if (!trimmed) return undefined;
+  return trimmed.replace(/\/$/, "");
+}
+
+function isGatewayModeConfig(config?: Pick<GeweAccountConfig, "gatewayUrl" | "gatewayKey">): boolean {
+  return Boolean(normalizeUrl(config?.gatewayUrl) && config?.gatewayKey?.trim());
+}
+
 function resolveToken(
   cfg: CoreConfig,
   accountId: string,
 ): { token: string; source: GeweTokenSource } {
   const merged = mergeGeweAccountConfig(cfg, accountId);
+  if (isGatewayModeConfig(merged)) {
+    return { token: "", source: "none" };
+  }
 
   const envToken = process.env.GEWE_TOKEN?.trim();
   if (envToken && accountId === DEFAULT_ACCOUNT_ID) {
@@ -91,6 +99,9 @@ function resolveAppId(
   accountId: string,
 ): { appId: string; source: GeweAppIdSource } {
   const merged = mergeGeweAccountConfig(cfg, accountId);
+  if (isGatewayModeConfig(merged)) {
+    return { appId: "", source: "none" };
+  }
 
   const envAppId = process.env.GEWE_APP_ID?.trim();
   if (envAppId && accountId === DEFAULT_ACCOUNT_ID) {
@@ -124,19 +135,18 @@ export function resolveGeweAccount(params: {
     const merged = mergeGeweAccountConfig(params.cfg, accountId);
     const accountEnabled = merged.enabled !== false;
     const enabled = baseEnabled && accountEnabled;
+    const mode = isGatewayModeConfig(merged) ? "gateway" : "direct";
     const tokenResolution = resolveToken(params.cfg, accountId);
     const appIdResolution = resolveAppId(params.cfg, accountId);
 
-    if (!merged.apiBaseUrl) {
-      merged.apiBaseUrl = DEFAULT_API_BASE_URL;
-    } else {
-      merged.apiBaseUrl = merged.apiBaseUrl.trim().replace(/\/$/, "");
-    }
+    merged.apiBaseUrl = normalizeUrl(merged.apiBaseUrl) ?? DEFAULT_API_BASE_URL;
+    merged.gatewayUrl = normalizeUrl(merged.gatewayUrl);
 
     return {
       accountId,
       enabled,
       name: merged.name?.trim() || undefined,
+      mode,
       token: tokenResolution.token,
       tokenSource: tokenResolution.source,
       appId: appIdResolution.appId,
@@ -161,4 +171,60 @@ export function listEnabledGeweAccounts(cfg: CoreConfig): ResolvedGeweAccount[] 
   return listGeweAccountIds(cfg)
     .map((accountId) => resolveGeweAccount({ cfg, accountId }))
     .filter((account) => account.enabled);
+}
+
+export function resolveIsGatewayMode(
+  account: ResolvedGeweAccount | GeweAccountConfig | null | undefined,
+): boolean {
+  if (!account) return false;
+  if ("mode" in account && account.mode) {
+    return account.mode === "gateway";
+  }
+  if ("config" in account && account.config) {
+    return isGatewayModeConfig(account.config);
+  }
+  return isGatewayModeConfig(account);
+}
+
+export function resolveIsGeweAccountConfigured(account: ResolvedGeweAccount): boolean {
+  if (resolveIsGatewayMode(account)) {
+    return Boolean(
+      account.config.gatewayUrl?.trim() &&
+        account.config.gatewayKey?.trim() &&
+        account.config.gatewayInstanceId?.trim() &&
+        resolveGatewayCallbackUrl(account) &&
+        resolveGatewayGroupBindings(account).length > 0,
+    );
+  }
+  return Boolean(account.token?.trim() && account.appId?.trim());
+}
+
+export function resolveGeweTransportBaseUrl(account: ResolvedGeweAccount): string {
+  if (resolveIsGatewayMode(account)) {
+    return normalizeUrl(account.config.gatewayUrl) ?? DEFAULT_API_BASE_URL;
+  }
+  return normalizeUrl(account.config.apiBaseUrl) ?? DEFAULT_API_BASE_URL;
+}
+
+export function resolveGatewayGroupBindings(account: ResolvedGeweAccount): string[] {
+  const groups = account.config.groups;
+  if (!groups || typeof groups !== "object") return [];
+  return Object.keys(groups).filter((groupId) => {
+    const trimmed = groupId.trim();
+    if (!trimmed || trimmed === "*") return false;
+    const groupConfig = groups[groupId];
+    return groupConfig?.enabled !== false;
+  });
+}
+
+export function resolveGatewayCallbackUrl(account: ResolvedGeweAccount): string | undefined {
+  return account.config.webhookPublicUrl?.trim() || undefined;
+}
+
+export function resolveGatewayRegisterIntervalMs(account: ResolvedGeweAccount): number {
+  const seconds = account.config.gatewayRegisterIntervalSec;
+  if (typeof seconds === "number" && Number.isFinite(seconds) && seconds > 0) {
+    return Math.round(seconds * 1000);
+  }
+  return 60_000;
 }

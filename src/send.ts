@@ -1,15 +1,53 @@
-import { assertGeweOk, postGeweJson } from "./api.js";
+import { resolveGeweTransportBaseUrl, resolveIsGatewayMode } from "./accounts.js";
+import { assertGeweOk, postGatewayJson, postGeweJson } from "./api.js";
 import type { GeweSendResult, ResolvedGeweAccount } from "./types.js";
 
 type GeweSendContext = {
   baseUrl: string;
-  token: string;
-  appId: string;
+  mode: "direct" | "gateway";
+  token?: string;
+  gatewayKey?: string;
+  appId?: string;
 };
 
 function buildContext(account: ResolvedGeweAccount): GeweSendContext {
-  const baseUrl = account.config.apiBaseUrl?.trim() || "https://www.geweapi.com";
-  return { baseUrl, token: account.token, appId: account.appId };
+  if (resolveIsGatewayMode(account)) {
+    return {
+      mode: "gateway",
+      baseUrl: resolveGeweTransportBaseUrl(account),
+      gatewayKey: account.config.gatewayKey?.trim(),
+    };
+  }
+  return {
+    mode: "direct",
+    baseUrl: resolveGeweTransportBaseUrl(account),
+    token: account.token,
+    appId: account.appId,
+  };
+}
+
+async function postSendJson<T>(params: {
+  ctx: GeweSendContext;
+  path: string;
+  body: Record<string, unknown>;
+}): Promise<{ ret: number; msg: string; data?: T }> {
+  if (params.ctx.mode === "gateway") {
+    return postGatewayJson<{ ret: number; msg: string; data?: T }>({
+      baseUrl: params.ctx.baseUrl,
+      gatewayKey: params.ctx.gatewayKey?.trim() ?? "",
+      path: params.path,
+      body: params.body,
+    });
+  }
+  return postGeweJson<T>({
+    baseUrl: params.ctx.baseUrl,
+    token: params.ctx.token?.trim() ?? "",
+    path: params.path,
+    body: {
+      appId: params.ctx.appId,
+      ...params.body,
+    },
+  });
 }
 
 function resolveSendResult(params: {
@@ -37,16 +75,14 @@ export async function sendTextGewe(params: {
   ats?: string;
 }): Promise<GeweSendResult> {
   const ctx = buildContext(params.account);
-  const resp = await postGeweJson<{
+  const resp = await postSendJson<{
     msgId?: number | string;
     newMsgId?: number | string;
     createTime?: number;
   }>({
-    baseUrl: ctx.baseUrl,
-    token: ctx.token,
+    ctx,
     path: "/gewe/v2/api/message/postText",
     body: {
-      appId: ctx.appId,
       toWxid: params.toWxid,
       content: params.content,
       ...(params.ats ? { ats: params.ats } : {}),
@@ -62,12 +98,10 @@ export async function sendImageGewe(params: {
   imgUrl: string;
 }): Promise<GeweSendResult> {
   const ctx = buildContext(params.account);
-  const resp = await postGeweJson({
-    baseUrl: ctx.baseUrl,
-    token: ctx.token,
+  const resp = await postSendJson({
+    ctx,
     path: "/gewe/v2/api/message/postImage",
     body: {
-      appId: ctx.appId,
       toWxid: params.toWxid,
       imgUrl: params.imgUrl,
     },
@@ -83,12 +117,10 @@ export async function sendVoiceGewe(params: {
   voiceDuration: number;
 }): Promise<GeweSendResult> {
   const ctx = buildContext(params.account);
-  const resp = await postGeweJson({
-    baseUrl: ctx.baseUrl,
-    token: ctx.token,
+  const resp = await postSendJson({
+    ctx,
     path: "/gewe/v2/api/message/postVoice",
     body: {
-      appId: ctx.appId,
       toWxid: params.toWxid,
       voiceUrl: params.voiceUrl,
       voiceDuration: params.voiceDuration,
@@ -106,12 +138,10 @@ export async function sendVideoGewe(params: {
   videoDuration: number;
 }): Promise<GeweSendResult> {
   const ctx = buildContext(params.account);
-  const resp = await postGeweJson({
-    baseUrl: ctx.baseUrl,
-    token: ctx.token,
+  const resp = await postSendJson({
+    ctx,
     path: "/gewe/v2/api/message/postVideo",
     body: {
-      appId: ctx.appId,
       toWxid: params.toWxid,
       videoUrl: params.videoUrl,
       thumbUrl: params.thumbUrl,
@@ -129,12 +159,10 @@ export async function sendFileGewe(params: {
   fileName: string;
 }): Promise<GeweSendResult> {
   const ctx = buildContext(params.account);
-  const resp = await postGeweJson({
-    baseUrl: ctx.baseUrl,
-    token: ctx.token,
+  const resp = await postSendJson({
+    ctx,
     path: "/gewe/v2/api/message/postFile",
     body: {
-      appId: ctx.appId,
       toWxid: params.toWxid,
       fileUrl: params.fileUrl,
       fileName: params.fileName,
@@ -153,12 +181,10 @@ export async function sendLinkGewe(params: {
   thumbUrl: string;
 }): Promise<GeweSendResult> {
   const ctx = buildContext(params.account);
-  const resp = await postGeweJson({
-    baseUrl: ctx.baseUrl,
-    token: ctx.token,
+  const resp = await postSendJson({
+    ctx,
     path: "/gewe/v2/api/message/postLink",
     body: {
-      appId: ctx.appId,
       toWxid: params.toWxid,
       title: params.title,
       desc: params.desc,

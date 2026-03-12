@@ -2,7 +2,12 @@ import type { ChannelPlugin, OpenClawConfig, WizardPrompter } from "openclaw/plu
 import { DEFAULT_ACCOUNT_ID, normalizeAccountId } from "openclaw/plugin-sdk";
 
 import type { CoreConfig, GeweAccountConfig, ResolvedGeweAccount } from "./types.js";
-import { resolveGeweAccount, resolveDefaultGeweAccountId, listGeweAccountIds } from "./accounts.js";
+import {
+  listGeweAccountIds,
+  resolveDefaultGeweAccountId,
+  resolveGeweAccount,
+  resolveIsGeweAccountConfigured,
+} from "./accounts.js";
 import { CHANNEL_CONFIG_KEY, CHANNEL_ID, stripChannelPrefix } from "./constants.js";
 
 const DEFAULT_WEBHOOK_HOST = "0.0.0.0";
@@ -67,6 +72,14 @@ function parseAllowFrom(raw: string): string[] {
     .split(/[\n,;]+/g)
     .map((entry) => stripChannelPrefix(entry.trim()))
     .filter(Boolean);
+}
+
+function parseGroupIds(raw: string): string[] {
+  return raw
+    .split(/[\n,;]+/g)
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+    .filter((entry) => entry !== "*");
 }
 
 async function promptAllowFrom(params: {
@@ -148,9 +161,9 @@ export const geweOnboarding: GeweOnboardingAdapter = {
       ctx.accountOverrides?.[CHANNEL_ID] ??
       resolveDefaultGeweAccountId(ctx.cfg as CoreConfig);
     const account = resolveGeweAccount({ cfg: ctx.cfg as CoreConfig, accountId });
-    const configured = Boolean(account.token?.trim() && account.appId?.trim());
+    const configured = resolveIsGeweAccountConfigured(account);
     const label = configured ? "configured" : "not configured";
-    const status = `GeWe (${accountId}): ${label}`;
+    const status = `GeWe (${accountId}, ${account.mode ?? "direct"}): ${label}`;
     return {
       channel: CHANNEL_ID,
       configured,
@@ -165,33 +178,83 @@ export const geweOnboarding: GeweOnboardingAdapter = {
       : resolveDefaultGeweAccountId(ctx.cfg as CoreConfig);
     const resolved = resolveGeweAccount({ cfg: ctx.cfg as CoreConfig, accountId });
     const existing = readAccountConfig(ctx.cfg, accountId);
+    const mode = await ctx.prompter.select({
+      message: "Connection mode",
+      options: [
+        { value: "direct", label: "Direct GeWe API" },
+        { value: "gateway", label: "Gateway mode" },
+      ],
+      initialValue: resolved.mode ?? "direct",
+    });
 
     await ctx.prompter.note(
-      [
-        "You will need:",
-        "- GeWe token + appId",
-        "- Public webhook endpoint (FRP or reverse proxy)",
-        "- Public media base URL (optional proxy fallback)",
-      ].join("\n"),
+      mode === "gateway"
+        ? [
+            "You will need:",
+            "- Gateway URL + gateway key",
+            "- Gateway instance id",
+            "- Public webhook endpoint reachable by the gateway",
+            "- Explicit WeChat group ids (chatroom ids) for routing",
+            "- Public media base URL (optional proxy fallback)",
+          ].join("\n")
+        : [
+            "You will need:",
+            "- GeWe token + appId",
+            "- Public webhook endpoint (FRP or reverse proxy)",
+            "- Public media base URL (optional proxy fallback)",
+          ].join("\n"),
       "GeWe setup",
     );
 
-    const token = await ctx.prompter.text({
-      message: "GeWe token",
-      initialValue: resolved.tokenSource !== "none" ? resolved.token : existing.token,
-      validate: (value) => (value.trim() ? undefined : "Required"),
-    });
-    const appId = await ctx.prompter.text({
-      message: "GeWe appId",
-      initialValue: resolved.appIdSource !== "none" ? resolved.appId : existing.appId,
-      validate: (value) => (value.trim() ? undefined : "Required"),
-    });
+    const token =
+      mode === "direct"
+        ? await ctx.prompter.text({
+            message: "GeWe token",
+            initialValue: resolved.tokenSource !== "none" ? resolved.token : existing.token,
+            validate: (value) => (value.trim() ? undefined : "Required"),
+          })
+        : "";
+    const appId =
+      mode === "direct"
+        ? await ctx.prompter.text({
+            message: "GeWe appId",
+            initialValue: resolved.appIdSource !== "none" ? resolved.appId : existing.appId,
+            validate: (value) => (value.trim() ? undefined : "Required"),
+          })
+        : "";
 
-    const apiBaseUrl = await ctx.prompter.text({
-      message: "GeWe API base URL",
-      initialValue: existing.apiBaseUrl ?? DEFAULT_API_BASE_URL,
-      validate: (value) => (value.trim() ? undefined : "Required"),
-    });
+    const gatewayUrl =
+      mode === "gateway"
+        ? await ctx.prompter.text({
+            message: "Gateway URL",
+            initialValue: existing.gatewayUrl,
+            validate: (value) => (value.trim() ? undefined : "Required"),
+          })
+        : "";
+    const gatewayKey =
+      mode === "gateway"
+        ? await ctx.prompter.text({
+            message: "Gateway key",
+            initialValue: existing.gatewayKey,
+            validate: (value) => (value.trim() ? undefined : "Required"),
+          })
+        : "";
+    const gatewayInstanceId =
+      mode === "gateway"
+        ? await ctx.prompter.text({
+            message: "Gateway instance id",
+            initialValue: existing.gatewayInstanceId ?? accountId,
+            validate: (value) => (value.trim() ? undefined : "Required"),
+          })
+        : "";
+    const apiBaseUrl =
+      mode === "direct"
+        ? await ctx.prompter.text({
+            message: "GeWe API base URL",
+            initialValue: existing.apiBaseUrl ?? DEFAULT_API_BASE_URL,
+            validate: (value) => (value.trim() ? undefined : "Required"),
+          })
+        : "";
 
     const webhookHost = await ctx.prompter.text({
       message: "Webhook host",
@@ -212,6 +275,31 @@ export const geweOnboarding: GeweOnboardingAdapter = {
       initialValue: existing.webhookPath ?? DEFAULT_WEBHOOK_PATH,
       validate: (value) => (value.trim() ? undefined : "Required"),
     });
+    const webhookPublicUrl =
+      mode === "gateway"
+        ? await ctx.prompter.text({
+            message: "Webhook public URL",
+            placeholder: "https://openclaw.example.com/webhook",
+            initialValue: existing.webhookPublicUrl,
+            validate: (value) => (value.trim() ? undefined : "Required"),
+          })
+        : existing.webhookPublicUrl;
+    const gatewayGroups =
+      mode === "gateway"
+        ? parseGroupIds(
+            String(
+              await ctx.prompter.text({
+                message: "Gateway group ids (comma or newline separated)",
+                placeholder: "123456@chatroom",
+                initialValue: Object.keys(existing.groups ?? {})
+                  .filter((groupId) => groupId !== "*")
+                  .join(", "),
+                validate: (value) =>
+                  parseGroupIds(value).length > 0 ? undefined : "At least one group is required",
+              }),
+            ),
+          )
+        : [];
 
     const mediaPublicUrl = await ctx.prompter.text({
       message: "Media public URL (prefix)",
@@ -346,16 +434,31 @@ export const geweOnboarding: GeweOnboardingAdapter = {
 
     let nextCfg = applyAccountPatch(ctx.cfg, accountId, {
       enabled: true,
-      token: token.trim(),
-      appId: appId.trim(),
-      apiBaseUrl: apiBaseUrl.trim().replace(/\/$/, ""),
+      token: mode === "direct" ? token.trim() : undefined,
+      appId: mode === "direct" ? appId.trim() : undefined,
+      apiBaseUrl:
+        mode === "direct" ? apiBaseUrl.trim().replace(/\/$/, "") : undefined,
+      gatewayUrl: mode === "gateway" ? gatewayUrl.trim().replace(/\/$/, "") : undefined,
+      gatewayKey: mode === "gateway" ? gatewayKey.trim() : undefined,
+      gatewayInstanceId: mode === "gateway" ? gatewayInstanceId.trim() : undefined,
       webhookHost: webhookHost.trim(),
       webhookPort: Number(webhookPortRaw),
       webhookPath: webhookPath.trim(),
+      webhookPublicUrl:
+        mode === "gateway" ? webhookPublicUrl?.trim() || undefined : existing.webhookPublicUrl,
       mediaHost: existing.mediaHost ?? DEFAULT_MEDIA_HOST,
       mediaPort: existing.mediaPort ?? DEFAULT_MEDIA_PORT,
       mediaPath: existing.mediaPath ?? DEFAULT_MEDIA_PATH,
       mediaPublicUrl: mediaPublicUrl.trim() || undefined,
+      groups:
+        mode === "gateway"
+          ? Object.fromEntries(
+              gatewayGroups.map((groupId) => [
+                groupId,
+                existing.groups?.[groupId] ?? { enabled: true },
+              ]),
+            )
+          : existing.groups,
       ...s3Patch,
       ...(allowFrom ? { allowFrom } : {}),
       ...(dmPolicy ? { dmPolicy } : {}),

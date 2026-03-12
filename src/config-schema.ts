@@ -26,6 +26,10 @@ export const GeweAccountSchemaBase = z
     enabled: z.boolean().optional(),
     markdown: MarkdownConfigSchema,
     apiBaseUrl: z.string().optional(),
+    gatewayUrl: z.string().optional(),
+    gatewayKey: z.string().optional(),
+    gatewayInstanceId: z.string().optional(),
+    gatewayRegisterIntervalSec: z.number().positive().optional(),
     token: z.string().optional(),
     tokenFile: z.string().optional(),
     appId: z.string().optional(),
@@ -127,6 +131,68 @@ export const GeweAccountSchemaBase = z
           });
         }
       }
+    }
+
+    const gatewayUrl = value.gatewayUrl?.trim();
+    const gatewayKey = value.gatewayKey?.trim();
+    const gatewayMode = Boolean(gatewayUrl || gatewayKey);
+
+    if (gatewayMode && (!gatewayUrl || !gatewayKey)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [gatewayUrl ? "gatewayKey" : "gatewayUrl"],
+        message: "gatewayUrl and gatewayKey must be configured together",
+      });
+    }
+
+    if (!gatewayMode) return;
+
+    const instanceId = value.gatewayInstanceId?.trim();
+    if (!instanceId) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["gatewayInstanceId"],
+        message: "gatewayInstanceId is required in gateway mode",
+      });
+    }
+
+    const callbackUrl = value.webhookPublicUrl?.trim();
+    if (!callbackUrl) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["webhookPublicUrl"],
+        message: "webhookPublicUrl is required in gateway mode",
+      });
+    } else {
+      try {
+        new URL(callbackUrl);
+      } catch {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["webhookPublicUrl"],
+          message: "webhookPublicUrl must be a valid URL in gateway mode",
+        });
+      }
+    }
+
+    const groups = value.groups ?? {};
+    const explicitGroups = Object.keys(groups).filter((groupId) => {
+      const trimmed = groupId.trim();
+      return Boolean(trimmed) && trimmed !== "*";
+    });
+    if (explicitGroups.length === 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["groups"],
+        message: "gateway mode requires explicit group bindings",
+      });
+    }
+    if (Object.prototype.hasOwnProperty.call(groups, "*")) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["groups", "*"],
+        message: 'gateway mode does not allow wildcard group "*"',
+      });
     }
   });
 

@@ -18,6 +18,26 @@ async function readResponseText(res: Response): Promise<string> {
   }
 }
 
+async function postJson<T>(params: {
+  url: string;
+  headers: Record<string, string>;
+  body: Record<string, unknown>;
+}): Promise<T> {
+  const res = await fetch(params.url, {
+    method: "POST",
+    headers: params.headers,
+    body: JSON.stringify(params.body),
+  });
+
+  if (!res.ok) {
+    const text = await readResponseText(res);
+    const detail = text ? `: ${text}` : "";
+    throw new Error(`HTTP request failed (${res.status})${detail}`);
+  }
+
+  return (await res.json()) as T;
+}
+
 export async function postGeweJson<T>(params: {
   baseUrl: string;
   token: string;
@@ -25,23 +45,31 @@ export async function postGeweJson<T>(params: {
   body: Record<string, unknown>;
 }): Promise<GeweApiResponse<T>> {
   const url = buildGeweUrl(params.baseUrl, params.path);
-  const res = await fetch(url, {
-    method: "POST",
+  return postJson<GeweApiResponse<T>>({
+    url,
     headers: {
       "Content-Type": "application/json",
       "X-GEWE-TOKEN": params.token,
     },
-    body: JSON.stringify(params.body),
+    body: params.body,
   });
+}
 
-  if (!res.ok) {
-    const text = await readResponseText(res);
-    const detail = text ? `: ${text}` : "";
-    throw new Error(`GeWe API request failed (${res.status})${detail}`);
-  }
-
-  const json = (await res.json()) as GeweApiResponse<T>;
-  return json;
+export async function postGatewayJson<T>(params: {
+  baseUrl: string;
+  gatewayKey: string;
+  path: string;
+  body: Record<string, unknown>;
+}): Promise<T> {
+  const url = buildGeweUrl(params.baseUrl, params.path);
+  return postJson<T>({
+    url,
+    headers: {
+      "Content-Type": "application/json",
+      "X-GeWe-Gateway-Key": params.gatewayKey,
+    },
+    body: params.body,
+  });
 }
 
 export function assertGeweOk<T>(resp: GeweApiResponse<T>, context: string): T | undefined {

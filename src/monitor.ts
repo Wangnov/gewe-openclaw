@@ -2,11 +2,21 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 
 import type { OpenClawConfig, RuntimeEnv } from "openclaw/plugin-sdk";
 
-import { resolveGeweAccount } from "./accounts.js";
+import {
+  resolveGatewayRegisterIntervalMs,
+  resolveGeweAccount,
+  resolveIsGatewayMode,
+} from "./accounts.js";
 import { GeweDownloadQueue } from "./download-queue.js";
+import {
+  heartbeatGatewayInstance,
+  registerGatewayInstance,
+  unregisterGatewayInstance,
+} from "./gateway-client.js";
 import { createGeweInboundDebouncer } from "./inbound-batch.js";
 import { handleGeweInboundBatch } from "./inbound.js";
 import { createGeweMediaServer, DEFAULT_MEDIA_HOST, DEFAULT_MEDIA_PATH, DEFAULT_MEDIA_PORT } from "./media-server.js";
+import { resolvePluginVersion } from "./plugin-version.js";
 import { getGeweRuntime } from "./runtime.js";
 import type {
   CoreConfig,
@@ -267,7 +277,8 @@ export async function monitorGeweProvider(
     },
   };
 
-  if (!account.token || !account.appId) {
+  const gatewayMode = resolveIsGatewayMode(account);
+  if (!gatewayMode && (!account.token || !account.appId)) {
     throw new Error(`GeWe not configured for account "${account.accountId}" (token/appId missing)`);
   }
 
@@ -339,18 +350,66 @@ export async function monitorGeweProvider(
     );
   }
 
+  let gatewayHeartbeatTimer: ReturnType<typeof setInterval> | undefined;
+  let gatewayStopped = false;
+  const stopGatewayRegistration = () => {
+    if (gatewayStopped) return;
+    gatewayStopped = true;
+    if (gatewayHeartbeatTimer) {
+      clearInterval(gatewayHeartbeatTimer);
+      gatewayHeartbeatTimer = undefined;
+    }
+    if (!gatewayMode) return;
+    void unregisterGatewayInstance({ account }).catch((err) => {
+      runtime.error?.(`[${account.accountId}] GeWe gateway unregister failed: ${String(err)}`);
+    });
+  };
+
+  if (gatewayMode) {
+    const pluginVersion = resolvePluginVersion();
+    await registerGatewayInstance({ account, pluginVersion });
+    runtime.log?.(
+      `[${account.accountId}] registered GeWe gateway instance ${account.config.gatewayInstanceId?.trim() || account.accountId}`,
+    );
+    const intervalMs = resolveGatewayRegisterIntervalMs(account);
+    gatewayHeartbeatTimer = setInterval(() => {
+      void heartbeatGatewayInstance({ account }).catch(async (heartbeatError) => {
+        runtime.error?.(
+          `[${account.accountId}] GeWe gateway heartbeat failed: ${String(heartbeatError)}`,
+        );
+        try {
+          await registerGatewayInstance({ account, pluginVersion });
+          runtime.log?.(`[${account.accountId}] re-registered GeWe gateway instance`);
+        } catch (registerError) {
+          runtime.error?.(
+            `[${account.accountId}] GeWe gateway re-register failed: ${String(registerError)}`,
+          );
+        }
+      });
+    }, intervalMs);
+  }
+
   let resolveRunning: (() => void) | undefined;
   const runningPromise = new Promise<void>((resolve) => {
     resolveRunning = resolve;
     if (!opts.abortSignal) return;
     if (opts.abortSignal.aborted) {
+      stopGatewayRegistration();
       resolve();
       return;
     }
-    opts.abortSignal.addEventListener("abort", () => resolve(), { once: true });
+    opts.abortSignal.addEventListener(
+      "abort",
+      () => {
+        stopGatewayRegistration();
+        resolve();
+      },
+      { once: true },
+    );
   });
 
   const stop = () => {
+    stopGatewayRegistration();
     void debouncer.flushAll();
     webhookServer.stop();
     if (mediaStop) mediaStop();

@@ -13,7 +13,13 @@ import {
   type ChannelSetupInput,
 } from "openclaw/plugin-sdk";
 
-import { resolveGeweAccount, resolveDefaultGeweAccountId, listGeweAccountIds } from "./accounts.js";
+import {
+  listGeweAccountIds,
+  resolveDefaultGeweAccountId,
+  resolveGeweAccount,
+  resolveGeweTransportBaseUrl,
+  resolveIsGeweAccountConfigured,
+} from "./accounts.js";
 import { GeweConfigSchema } from "./config-schema.js";
 import {
   CHANNEL_ALIASES,
@@ -62,8 +68,8 @@ export const gewePlugin: ChannelPlugin<ResolvedGeweAccount> = {
     normalizeAllowEntry: (entry) => stripChannelPrefix(entry),
     notifyApproval: async ({ cfg, id }) => {
       const account = resolveGeweAccount({ cfg: cfg as CoreConfig });
-      if (!account.token || !account.appId) {
-        throw new Error("GeWe token/appId not configured");
+      if (!resolveIsGeweAccountConfigured(account)) {
+        throw new Error("GeWe account is not configured");
       }
       await sendTextGewe({
         account,
@@ -101,14 +107,15 @@ export const gewePlugin: ChannelPlugin<ResolvedGeweAccount> = {
         accountId,
         clearBaseFields: ["token", "tokenFile", "appId", "appIdFile", "name"],
       }),
-    isConfigured: (account) => Boolean(account.token?.trim() && account.appId?.trim()),
+    isConfigured: (account) => resolveIsGeweAccountConfigured(account),
     describeAccount: (account) => ({
       accountId: account.accountId,
       name: account.name,
       enabled: account.enabled,
-      configured: Boolean(account.token?.trim() && account.appId?.trim()),
+      configured: resolveIsGeweAccountConfigured(account),
+      mode: account.mode ?? "direct",
       tokenSource: account.tokenSource,
-      baseUrl: account.config.apiBaseUrl ? "[set]" : "[missing]",
+      baseUrl: resolveGeweTransportBaseUrl(account),
     }),
     resolveAllowFrom: ({ cfg, accountId }) =>
       (resolveGeweAccount({ cfg: cfg as CoreConfig, accountId }).config.allowFrom ?? []).map(
@@ -283,19 +290,19 @@ export const gewePlugin: ChannelPlugin<ResolvedGeweAccount> = {
       lastOutboundAt: snapshot.lastOutboundAt ?? null,
     }),
     buildAccountSnapshot: ({ account, runtime }) => {
-      const configured = Boolean(account.token?.trim() && account.appId?.trim());
+      const configured = resolveIsGeweAccountConfigured(account);
       return {
         accountId: account.accountId,
         name: account.name,
         enabled: account.enabled,
         configured,
         tokenSource: account.tokenSource,
-        baseUrl: account.config.apiBaseUrl ? "[set]" : "[missing]",
+        baseUrl: resolveGeweTransportBaseUrl(account),
         running: runtime?.running ?? false,
         lastStartAt: runtime?.lastStartAt ?? null,
         lastStopAt: runtime?.lastStopAt ?? null,
         lastError: runtime?.lastError ?? null,
-        mode: "webhook",
+        mode: account.mode ?? "direct",
         lastInboundAt: runtime?.lastInboundAt ?? null,
         lastOutboundAt: runtime?.lastOutboundAt ?? null,
         dmPolicy: account.config.dmPolicy ?? "pairing",
@@ -305,10 +312,8 @@ export const gewePlugin: ChannelPlugin<ResolvedGeweAccount> = {
   gateway: {
     startAccount: async (ctx) => {
       const account = ctx.account;
-      if (!account.token || !account.appId) {
-        throw new Error(
-          `GeWe not configured for account "${account.accountId}" (missing token/appId)`,
-        );
+      if (!resolveIsGeweAccountConfigured(account)) {
+        throw new Error(`GeWe not configured for account "${account.accountId}"`);
       }
       ctx.log?.info(`[${account.accountId}] starting GeWe webhook server`);
       const { stop } = await monitorGeweProvider({

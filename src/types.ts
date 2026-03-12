@@ -19,6 +19,10 @@ export type GeweAccountConfig = {
   name?: string;
   enabled?: boolean;
   apiBaseUrl?: string;
+  gatewayUrl?: string;
+  gatewayKey?: string;
+  gatewayInstanceId?: string;
+  gatewayRegisterIntervalSec?: number;
   token?: string;
   tokenFile?: string;
   appId?: string;
@@ -99,6 +103,7 @@ export type ResolvedGeweAccount = {
   accountId: string;
   name?: string;
   enabled: boolean;
+  mode?: "direct" | "gateway";
   token: string;
   tokenSource: GeweTokenSource;
   appId: string;

@@ -1,10 +1,55 @@
-import { assertGeweOk, postGeweJson } from "./api.js";
+import { resolveGeweTransportBaseUrl, resolveIsGatewayMode } from "./accounts.js";
+import { assertGeweOk, postGatewayJson, postGeweJson } from "./api.js";
 import type { ResolvedGeweAccount } from "./types.js";
 
 type DownloadResult = { fileUrl: string };
 
-function resolveBaseUrl(account: ResolvedGeweAccount): string {
-  return account.config.apiBaseUrl?.trim() || "https://www.geweapi.com";
+type DownloadContext = {
+  mode: "direct" | "gateway";
+  baseUrl: string;
+  token?: string;
+  gatewayKey?: string;
+  appId?: string;
+};
+
+function buildContext(account: ResolvedGeweAccount): DownloadContext {
+  if (resolveIsGatewayMode(account)) {
+    return {
+      mode: "gateway",
+      baseUrl: resolveGeweTransportBaseUrl(account),
+      gatewayKey: account.config.gatewayKey?.trim(),
+    };
+  }
+  return {
+    mode: "direct",
+    baseUrl: resolveGeweTransportBaseUrl(account),
+    token: account.token,
+    appId: account.appId,
+  };
+}
+
+async function postDownloadJson(params: {
+  ctx: DownloadContext;
+  path: string;
+  body: Record<string, unknown>;
+}): Promise<{ ret: number; msg: string; data?: DownloadResult }> {
+  if (params.ctx.mode === "gateway") {
+    return postGatewayJson<{ ret: number; msg: string; data?: DownloadResult }>({
+      baseUrl: params.ctx.baseUrl,
+      gatewayKey: params.ctx.gatewayKey?.trim() ?? "",
+      path: params.path,
+      body: params.body,
+    });
+  }
+  return postGeweJson<DownloadResult>({
+    baseUrl: params.ctx.baseUrl,
+    token: params.ctx.token?.trim() ?? "",
+    path: params.path,
+    body: {
+      appId: params.ctx.appId,
+      ...params.body,
+    },
+  });
 }
 
 export async function downloadGeweImage(params: {
@@ -12,12 +57,10 @@ export async function downloadGeweImage(params: {
   xml: string;
   type: 1 | 2 | 3;
 }): Promise<string> {
-  const resp = await postGeweJson<DownloadResult>({
-    baseUrl: resolveBaseUrl(params.account),
-    token: params.account.token,
+  const resp = await postDownloadJson({
+    ctx: buildContext(params.account),
     path: "/gewe/v2/api/message/downloadImage",
     body: {
-      appId: params.account.appId,
       xml: params.xml,
       type: params.type,
     },
@@ -32,12 +75,10 @@ export async function downloadGeweVoice(params: {
   xml: string;
   msgId: number;
 }): Promise<string> {
-  const resp = await postGeweJson<DownloadResult>({
-    baseUrl: resolveBaseUrl(params.account),
-    token: params.account.token,
+  const resp = await postDownloadJson({
+    ctx: buildContext(params.account),
     path: "/gewe/v2/api/message/downloadVoice",
     body: {
-      appId: params.account.appId,
       xml: params.xml,
       msgId: params.msgId,
     },
@@ -51,12 +92,10 @@ export async function downloadGeweVideo(params: {
   account: ResolvedGeweAccount;
   xml: string;
 }): Promise<string> {
-  const resp = await postGeweJson<DownloadResult>({
-    baseUrl: resolveBaseUrl(params.account),
-    token: params.account.token,
+  const resp = await postDownloadJson({
+    ctx: buildContext(params.account),
     path: "/gewe/v2/api/message/downloadVideo",
     body: {
-      appId: params.account.appId,
       xml: params.xml,
     },
   });
@@ -69,12 +108,10 @@ export async function downloadGeweFile(params: {
   account: ResolvedGeweAccount;
   xml: string;
 }): Promise<string> {
-  const resp = await postGeweJson<DownloadResult>({
-    baseUrl: resolveBaseUrl(params.account),
-    token: params.account.token,
+  const resp = await postDownloadJson({
+    ctx: buildContext(params.account),
     path: "/gewe/v2/api/message/downloadFile",
     body: {
-      appId: params.account.appId,
       xml: params.xml,
     },
   });
