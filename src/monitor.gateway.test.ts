@@ -12,6 +12,7 @@ test("gateway mode 启动 webhook 时会注册并注销网关实例", async () =
         gatewayUrl: "https://gateway.example.com",
         gatewayKey: "gateway-key",
         gatewayInstanceId: "instance-a",
+        gatewayRegisterIntervalSec: 0.01,
         webhookHost: "127.0.0.1",
         webhookPort: 0,
         webhookPath: "/webhook",
@@ -36,8 +37,9 @@ test("gateway mode 启动 webhook 时会注册并注销网关实例", async () =
   }) as typeof fetch;
 
   const runtimeLogs: string[] = [];
+  const statusPatches: Array<Record<string, unknown>> = [];
   const controller = new AbortController();
-  setTimeout(() => controller.abort(), 25);
+  setTimeout(() => controller.abort(), 60);
   setGeweRuntime({
     config: {
       loadConfig: () => cfg,
@@ -66,6 +68,7 @@ test("gateway mode 启动 webhook 时会注册并注销网关实例", async () =
           throw new Error("exit not expected");
         },
       },
+      statusSink: (patch) => statusPatches.push(patch as Record<string, unknown>),
     });
   } finally {
     globalThis.fetch = originalFetch;
@@ -80,4 +83,9 @@ test("gateway mode 启动 webhook 时会注册并注销网关实例", async () =
     ),
   );
   assert.ok(runtimeLogs.some((entry) => entry.includes("registered GeWe gateway instance")));
+  assert.ok(
+    calls.some((call) => call.input === "https://gateway.example.com/gateway/v1/instances/heartbeat"),
+  );
+  assert.ok(statusPatches.some((patch) => typeof patch.lastGatewayRegisterAt === "number"));
+  assert.ok(statusPatches.some((patch) => typeof patch.lastGatewayHeartbeatAt === "number"));
 });

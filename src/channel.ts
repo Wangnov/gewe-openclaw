@@ -277,6 +277,9 @@ export const gewePlugin: ChannelPlugin<ResolvedGeweAccount> = {
       lastStartAt: null,
       lastStopAt: null,
       lastError: null,
+      lastGatewayRegisterAt: null,
+      lastGatewayHeartbeatAt: null,
+      lastGatewayError: null,
     },
     buildChannelSummary: ({ snapshot }) => ({
       configured: snapshot.configured ?? false,
@@ -288,6 +291,9 @@ export const gewePlugin: ChannelPlugin<ResolvedGeweAccount> = {
       lastError: snapshot.lastError ?? null,
       lastInboundAt: snapshot.lastInboundAt ?? null,
       lastOutboundAt: snapshot.lastOutboundAt ?? null,
+      lastGatewayRegisterAt: snapshot.lastGatewayRegisterAt ?? null,
+      lastGatewayHeartbeatAt: snapshot.lastGatewayHeartbeatAt ?? null,
+      lastGatewayError: snapshot.lastGatewayError ?? null,
     }),
     buildAccountSnapshot: ({ account, runtime }) => {
       const configured = resolveIsGeweAccountConfigured(account);
@@ -305,6 +311,9 @@ export const gewePlugin: ChannelPlugin<ResolvedGeweAccount> = {
         mode: account.mode ?? "direct",
         lastInboundAt: runtime?.lastInboundAt ?? null,
         lastOutboundAt: runtime?.lastOutboundAt ?? null,
+        lastGatewayRegisterAt: runtime?.lastGatewayRegisterAt ?? null,
+        lastGatewayHeartbeatAt: runtime?.lastGatewayHeartbeatAt ?? null,
+        lastGatewayError: runtime?.lastGatewayError ?? null,
         dmPolicy: account.config.dmPolicy ?? "pairing",
       };
     },

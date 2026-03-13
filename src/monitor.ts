@@ -260,7 +260,13 @@ export type GeweMonitorOptions = {
   config?: CoreConfig;
   runtime?: RuntimeEnv;
   abortSignal?: AbortSignal;
-  statusSink?: (patch: { lastInboundAt?: number; lastOutboundAt?: number }) => void;
+  statusSink?: (patch: {
+    lastInboundAt?: number;
+    lastOutboundAt?: number;
+    lastGatewayRegisterAt?: number;
+    lastGatewayHeartbeatAt?: number;
+    lastGatewayError?: string | null;
+  }) => void;
 };
 
 export async function monitorGeweProvider(
@@ -368,24 +374,43 @@ export async function monitorGeweProvider(
   if (gatewayMode) {
     const pluginVersion = resolvePluginVersion();
     await registerGatewayInstance({ account, pluginVersion });
+    opts.statusSink?.({
+      lastGatewayRegisterAt: Date.now(),
+      lastGatewayError: null,
+    });
     runtime.log?.(
       `[${account.accountId}] registered GeWe gateway instance ${account.config.gatewayInstanceId?.trim() || account.accountId}`,
     );
     const intervalMs = resolveGatewayRegisterIntervalMs(account);
     gatewayHeartbeatTimer = setInterval(() => {
-      void heartbeatGatewayInstance({ account }).catch(async (heartbeatError) => {
-        runtime.error?.(
-          `[${account.accountId}] GeWe gateway heartbeat failed: ${String(heartbeatError)}`,
-        );
-        try {
-          await registerGatewayInstance({ account, pluginVersion });
-          runtime.log?.(`[${account.accountId}] re-registered GeWe gateway instance`);
-        } catch (registerError) {
+      void heartbeatGatewayInstance({ account })
+        .then(() => {
+          opts.statusSink?.({
+            lastGatewayHeartbeatAt: Date.now(),
+            lastGatewayError: null,
+          });
+        })
+        .catch(async (heartbeatError) => {
+          const message = String(heartbeatError);
+          opts.statusSink?.({ lastGatewayError: message });
           runtime.error?.(
-            `[${account.accountId}] GeWe gateway re-register failed: ${String(registerError)}`,
+            `[${account.accountId}] GeWe gateway heartbeat failed: ${message}`,
           );
-        }
-      });
+          try {
+            await registerGatewayInstance({ account, pluginVersion });
+            opts.statusSink?.({
+              lastGatewayRegisterAt: Date.now(),
+              lastGatewayError: null,
+            });
+            runtime.log?.(`[${account.accountId}] re-registered GeWe gateway instance`);
+          } catch (registerError) {
+            const registerMessage = String(registerError);
+            opts.statusSink?.({ lastGatewayError: registerMessage });
+            runtime.error?.(
+              `[${account.accountId}] GeWe gateway re-register failed: ${registerMessage}`,
+            );
+          }
+        });
     }, intervalMs);
   }
 

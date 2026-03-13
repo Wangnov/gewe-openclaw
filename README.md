@@ -44,6 +44,8 @@ openclaw onboard
 
 在通道列表中选择 **GeWe**，按提示填写 `token`、`appId`、`webhook`，以及可选的 `mediaPublicUrl`/`S3` 媒体配置。
 
+如果你使用 `gewe-gateway` 网关模式，则改为填写 `gatewayUrl`、`gatewayKey`、`gatewayInstanceId`、`webhookPublicUrl` 和显式群列表。
+
 ### 方式 B：直接编辑配置文件
 
 直接编辑 `~/.openclaw/openclaw.json` 的 `channels.gewe-openclaw` 段落（见下方示例）。
@@ -116,6 +118,48 @@ openclaw onboard
 - 公网 URL：先尝试原 URL 发送，失败后再尝试上传 S3，仍失败回退本地反代。
 
 > 配置变更后需重启 Gateway。
+
+## 网关模式
+
+当你没有足够多的微信号，但希望让多台 OpenClaw 临时分别服务不同微信群时，可以把 `gewe-openclaw` 配成网关模式。
+
+网关模式下：
+
+- GeWe 官方 webhook 只打到 `gewe-gateway`
+- `gewe-openclaw` 不再直连 GeWe，也不再要求本地配置 `token/appId`
+- 每台 OpenClaw 只声明自己负责的群
+- 网关按群转发入站消息，并统一代理所有出站请求
+
+最小配置示例：
+
+```json5
+{
+  "channels": {
+    "gewe-openclaw": {
+      "enabled": true,
+      "gatewayUrl": "https://your-gateway.example.com",
+      "gatewayKey": "<gateway-key>",
+      "gatewayInstanceId": "openclaw-demo-a",
+      "webhookPublicUrl": "https://your-openclaw.example.com/gewe/webhook",
+      "webhookSecret": "<callback-secret>",
+      "groups": {
+        "123456@chatroom": {
+          "enabled": true,
+          "requireMention": true
+        }
+      }
+    }
+  }
+}
+```
+
+网关模式注意事项：
+
+- `gatewayUrl` 和 `gatewayKey` 必须成对配置
+- 一旦进入网关模式，`apiBaseUrl` 会被忽略
+- `groups` 必须显式列出群 ID，不能用 `*`
+- `webhookPublicUrl` 必须是网关可访问到的完整回调地址
+- 一个群同一时间只能绑定到一个活跃 OpenClaw 实例
 
 ## 高级用法：让未安装插件也出现在 onboarding 列表
 
