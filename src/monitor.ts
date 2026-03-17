@@ -259,9 +259,12 @@ export async function monitorGeweProvider(
   const core = getGeweRuntime();
   const cfg = opts.config ?? (core.config.loadConfig() as CoreConfig);
   const account = opts.account ?? resolveGeweAccount({ cfg, accountId: opts.accountId });
+  const fallbackLogger = core.logging.getChildLogger();
+  const formatRuntimeArgs = (args: unknown[]) =>
+    args.map((arg) => (typeof arg === "string" ? arg : String(arg))).join(" ");
   const runtime: RuntimeEnv = opts.runtime ?? {
-    log: (message: string) => core.logging.getChildLogger().info(message),
-    error: (message: string) => core.logging.getChildLogger().error(message),
+    log: (...args: unknown[]) => fallbackLogger.info(formatRuntimeArgs(args)),
+    error: (...args: unknown[]) => fallbackLogger.error(formatRuntimeArgs(args)),
     exit: () => {
       throw new Error("Runtime exit not available");
     },
