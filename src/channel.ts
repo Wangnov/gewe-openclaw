@@ -29,8 +29,8 @@ import { looksLikeGeweTargetId, normalizeGeweMessagingTarget } from "./normalize
 import { resolveGeweGroupToolPolicy, resolveGeweRequireMention } from "./policy.js";
 import { getGeweRuntime } from "./runtime.js";
 import { sendTextGewe } from "./send.js";
+import { geweSetupWizard } from "./setup-wizard.js";
 import type { CoreConfig, ResolvedGeweAccount } from "./types.js";
-import { geweOnboarding } from "./onboarding.js";
 
 const meta = {
   id: CHANNEL_ID,
@@ -56,7 +56,7 @@ type GeweSetupInput = ChannelSetupInput & {
 export const gewePlugin: ChannelPlugin<ResolvedGeweAccount> = {
   id: CHANNEL_ID,
   meta,
-  onboarding: geweOnboarding,
+  setupWizard: geweSetupWizard,
   pairing: {
     idLabel: "wechatUserId",
     normalizeAllowEntry: (entry) => stripChannelPrefix(entry),
