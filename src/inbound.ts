@@ -548,7 +548,10 @@ export async function handleGeweInboundBatch(params: {
   const configAllowFrom = normalizeGeweAllowlist(account.config.allowFrom);
   const configGroupAllowFrom = normalizeGeweAllowlist(account.config.groupAllowFrom);
   const storeAllowFrom = await core.channel.pairing
-    .readAllowFromStore(CHANNEL_ID)
+    .readAllowFromStore({
+      channel: CHANNEL_ID,
+      accountId: account.accountId,
+    })
     .catch(() => []);
   const storeAllowList = normalizeGeweAllowlist(storeAllowFrom);
 
@@ -629,6 +632,7 @@ export async function handleGeweInboundBatch(params: {
         if (dmPolicy === "pairing") {
           const { code, created } = await core.channel.pairing.upsertPairingRequest({
             channel: CHANNEL_ID,
+            accountId: account.accountId,
             id: senderId,
             meta: { name: senderName || undefined },
           });
