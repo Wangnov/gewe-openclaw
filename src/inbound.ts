@@ -36,6 +36,7 @@ type PreparedInbound = {
   groupId?: string;
   groupName?: string;
   groupSystemPrompt?: string;
+  groupSkillFilter?: string[];
   route: ReturnType<ReturnType<typeof getGeweRuntime>["channel"]["routing"]["resolveAgentRoute"]>;
   storePath: string;
   toWxid: string;
@@ -466,7 +467,9 @@ async function dispatchGeweInbound(params: {
   await core.channel.reply.dispatchReplyWithBufferedBlockDispatcher({
     ctx: ctxPayload,
     cfg: config as OpenClawConfig,
-    replyOptions: resolveGeweReplyOptions(account),
+    replyOptions: resolveGeweReplyOptions(account, {
+      skillFilter: prepared.groupSkillFilter,
+    }),
     dispatcherOptions: {
       deliver: async (payload: ReplyPayload) => {
         await deliverGewePayload({
@@ -567,12 +570,15 @@ export async function handleGeweInboundBatch(params: {
     runtime.log?.(`gewe: drop group ${groupId} (not allowlisted)`);
     return;
   }
-  if (groupMatch?.groupConfig?.enabled === false) {
+  if (groupMatch?.groupConfig?.enabled === false || groupMatch?.wildcardConfig?.enabled === false) {
     runtime.log?.(`gewe: drop group ${groupId} (disabled)`);
     return;
   }
 
-  const roomAllowFrom = normalizeGeweAllowlist(groupMatch?.groupConfig?.allowFrom);
+  const directRoomAllowFrom = normalizeGeweAllowlist(groupMatch?.groupConfig?.allowFrom);
+  const wildcardRoomAllowFrom = normalizeGeweAllowlist(groupMatch?.wildcardConfig?.allowFrom);
+  const roomAllowFrom =
+    directRoomAllowFrom.length > 0 ? directRoomAllowFrom : wildcardRoomAllowFrom;
   const baseGroupAllowFrom =
     configGroupAllowFrom.length > 0 ? configGroupAllowFrom : configAllowFrom;
   const effectiveAllowFrom = [...configAllowFrom, ...storeAllowList].filter(Boolean);
@@ -715,7 +721,11 @@ export async function handleGeweInboundBatch(params: {
     senderName: senderName || undefined,
     groupId,
     groupName: undefined,
-    groupSystemPrompt: groupMatch?.groupConfig?.systemPrompt?.trim() || undefined,
+    groupSystemPrompt:
+      groupMatch?.groupConfig?.systemPrompt?.trim() ||
+      groupMatch?.wildcardConfig?.systemPrompt?.trim() ||
+      undefined,
+    groupSkillFilter: groupMatch?.groupConfig?.skills ?? groupMatch?.wildcardConfig?.skills,
     route,
     storePath,
     toWxid,
