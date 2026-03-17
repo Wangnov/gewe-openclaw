@@ -3,7 +3,6 @@ import {
   buildChannelConfigSchema,
   DEFAULT_ACCOUNT_ID,
   deleteAccountFromConfigSection,
-  formatPairingApproveHint,
   missingTargetError,
   normalizeAccountId,
   PAIRING_APPROVED_MESSAGE,
@@ -53,25 +52,28 @@ type GeweSetupInput = ChannelSetupInput & {
   apiBaseUrl?: string;
 };
 
+const gewePairing = {
+  idLabel: "wechatUserId",
+  mode: "code" as const,
+  normalizeAllowEntry: (entry: string) => stripChannelPrefix(entry),
+  notifyApproval: async ({ cfg, id }: { cfg: OpenClawConfig; id: string }) => {
+    const account = resolveGeweAccount({ cfg: cfg as CoreConfig });
+    if (!account.token || !account.appId) {
+      throw new Error("GeWe token/appId not configured");
+    }
+    await sendTextGewe({
+      account,
+      toWxid: id,
+      content: PAIRING_APPROVED_MESSAGE,
+    });
+  },
+};
+
 export const gewePlugin: GeweChannelPlugin<ResolvedGeweAccount> = {
   id: CHANNEL_ID,
   meta,
   setupWizard: geweSetupWizard,
-  pairing: {
-    idLabel: "wechatUserId",
-    normalizeAllowEntry: (entry) => stripChannelPrefix(entry),
-    notifyApproval: async ({ cfg, id }) => {
-      const account = resolveGeweAccount({ cfg: cfg as CoreConfig });
-      if (!account.token || !account.appId) {
-        throw new Error("GeWe token/appId not configured");
-      }
-      await sendTextGewe({
-        account,
-        toWxid: id,
-        content: PAIRING_APPROVED_MESSAGE,
-      });
-    },
-  },
+  pairing: gewePairing as GeweChannelPlugin<ResolvedGeweAccount>["pairing"],
   capabilities: {
     chatTypes: ["direct", "group"],
     reactions: false,
@@ -134,7 +136,7 @@ export const gewePlugin: GeweChannelPlugin<ResolvedGeweAccount> = {
         allowFrom: account.config.allowFrom ?? [],
         policyPath: `${basePath}dmPolicy`,
         allowFromPath: basePath,
-        approveHint: formatPairingApproveHint(CHANNEL_ID),
+        approveHint: "Issue a pair code with: openclaw pairing code create gewe-openclaw",
         normalizeEntry: (raw) => stripChannelPrefix(raw),
       };
     },

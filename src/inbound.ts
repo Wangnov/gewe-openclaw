@@ -59,6 +59,10 @@ type NormalizedInboundEntry = {
 const DEFAULT_VOICE_SAMPLE_RATE = 24000;
 const DEFAULT_VOICE_DECODE_TIMEOUT_MS = 30_000;
 const SILK_HEADER = "#!SILK_V3";
+const GEWE_PAIR_CODE_REGEX = /^[A-HJ-NP-Z2-9]{8}$/i;
+const GEWE_PAIR_CODE_PREFIX_REGEX = /^配对码\s*[:：]?\s*([A-HJ-NP-Z2-9]{8})$/i;
+const GEWE_PAIR_CODE_SUCCESS_REPLY = "配对成功，已加入允许列表。请重新发送上一条消息。";
+const GEWE_PAIR_CODE_INVALID_REPLY = "配对码无效或已过期。";
 
 function resolveMediaPlaceholder(msgType: number): string {
   if (msgType === 3) return "<media:image>";
@@ -66,6 +70,16 @@ function resolveMediaPlaceholder(msgType: number): string {
   if (msgType === 43) return "<media:video>";
   if (msgType === 49) return "<media:document>";
   return "";
+}
+
+function resolveGewePairCodeCandidate(rawBody: string): string | null {
+  const trimmed = rawBody.trim();
+  if (!trimmed) return null;
+  if (GEWE_PAIR_CODE_REGEX.test(trimmed)) {
+    return trimmed.toUpperCase();
+  }
+  const prefixed = trimmed.match(GEWE_PAIR_CODE_PREFIX_REGEX);
+  return prefixed?.[1]?.toUpperCase() ?? null;
 }
 
 function looksLikeSilkVoice(params: {
@@ -636,27 +650,34 @@ export async function handleGeweInboundBatch(params: {
       }).allowed;
       if (!dmAllowed) {
         if (dmPolicy === "pairing") {
-          const { code, created } = await core.channel.pairing.upsertPairingRequest({
-            channel: CHANNEL_ID,
-            accountId: account.accountId,
-            id: senderId,
-            meta: { name: senderName || undefined },
-          });
-          if (created) {
+          const pairCode = resolveGewePairCodeCandidate(rawBodyCandidate);
+          if (pairCode) {
+            const pairingRuntime = core.channel.pairing as typeof core.channel.pairing & {
+              redeemPairCode?: (params: {
+                channel: string;
+                accountId: string;
+                code: string;
+                id: string;
+              }) => Promise<{ id: string; code: string } | null>;
+            };
+            const redeemed = await pairingRuntime.redeemPairCode?.({
+              channel: CHANNEL_ID,
+              accountId: account.accountId,
+              code: pairCode,
+              id: senderId,
+            });
             try {
               await deliverGewePayload({
-                payload: { text: core.channel.pairing.buildPairingReply({
-                  channel: CHANNEL_ID,
-                  idLine: `Your WeChat id: ${senderId}`,
-                  code,
-                }) },
+                payload: {
+                  text: redeemed ? GEWE_PAIR_CODE_SUCCESS_REPLY : GEWE_PAIR_CODE_INVALID_REPLY,
+                },
                 account,
                 cfg: config as OpenClawConfig,
                 toWxid,
                 statusSink: (patch) => statusSink?.(patch),
               });
             } catch (err) {
-              runtime.error?.(`gewe: pairing reply failed for ${senderId}: ${String(err)}`);
+              runtime.error?.(`gewe: pair code reply failed for ${senderId}: ${String(err)}`);
             }
           }
         }
