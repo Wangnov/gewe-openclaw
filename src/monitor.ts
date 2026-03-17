@@ -249,8 +249,20 @@ export function createGeweWebhookServer(opts: GeweWebhookServerOptions): {
   });
 
   const start = (): Promise<void> => {
-    return new Promise((resolve) => {
-      server.listen(port, host, () => resolve());
+    return new Promise((resolve, reject) => {
+      const onError = (err: Error) => {
+        reject(err);
+      };
+      server.once("error", onError);
+      try {
+        server.listen(port, host, () => {
+          server.off("error", onError);
+          resolve();
+        });
+      } catch (err) {
+        server.off("error", onError);
+        reject(err);
+      }
     });
   };
 

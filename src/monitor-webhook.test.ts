@@ -91,3 +91,37 @@ test("GeWe webhook 会拒绝超出宿主限制的请求体", async () => {
   assert.match(res.body, /Payload too large/i);
   assert.equal(received, false);
 });
+
+test("GeWe webhook start 在 listen 失败时会 reject", async () => {
+  const { server, start } = createGeweWebhookServer({
+    port: 4399,
+    host: "127.0.0.1",
+    path: "/webhook",
+    onMessage: async () => {},
+  });
+
+  server.on("error", () => {});
+  server.listen = ((...args: unknown[]) => {
+    queueMicrotask(() => {
+      server.emit("error", new Error("listen failed"));
+    });
+    return server;
+  }) as typeof server.listen;
+
+  const outcome = await Promise.race([
+    start()
+      .then(() => ({ status: "resolved" as const }))
+      .catch((err: unknown) => ({
+        status: "rejected" as const,
+        message: err instanceof Error ? err.message : String(err),
+      })),
+    new Promise<{ status: "timeout" }>((resolve) => {
+      setTimeout(() => resolve({ status: "timeout" }), 50);
+    }),
+  ]);
+
+  assert.deepEqual(outcome, {
+    status: "rejected",
+    message: "listen failed",
+  });
+});
