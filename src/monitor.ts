@@ -46,6 +46,13 @@ function isDuplicate(key: string): boolean {
   return false;
 }
 
+export function buildGeweInboundDedupeKey(params: {
+  accountId: string;
+  message: Pick<GeweInboundMessage, "appId" | "newMessageId">;
+}): string {
+  return `${params.accountId}:${params.message.appId}:${params.message.newMessageId}`;
+}
+
 function formatError(err: unknown): string {
   if (err instanceof Error) return err.message;
   return typeof err === "string" ? err : JSON.stringify(err);
@@ -324,7 +331,10 @@ export async function monitorGeweProvider(
       const isSelf = message.fromId === message.botWxid || message.senderId === message.botWxid;
       if (isSelf) return;
 
-      const dedupeKey = `${message.appId}:${message.newMessageId}`;
+      const dedupeKey = buildGeweInboundDedupeKey({
+        accountId: account.accountId,
+        message,
+      });
       if (isDuplicate(dedupeKey)) return;
       opts.statusSink?.({ lastInboundAt: Date.now() });
 
