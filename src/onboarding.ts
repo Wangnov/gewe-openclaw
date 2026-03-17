@@ -1,5 +1,10 @@
-import type { ChannelPlugin, OpenClawConfig, WizardPrompter } from "openclaw/plugin-sdk";
-import { DEFAULT_ACCOUNT_ID, normalizeAccountId } from "openclaw/plugin-sdk";
+import {
+  DEFAULT_ACCOUNT_ID,
+  normalizeAccountId,
+  type ChannelPlugin,
+  type OpenClawConfig,
+  type WizardPrompter,
+} from "./openclaw-compat.js";
 
 import type { CoreConfig, GeweAccountConfig, ResolvedGeweAccount } from "./types.js";
 import { resolveGeweAccount, resolveDefaultGeweAccountId, listGeweAccountIds } from "./accounts.js";

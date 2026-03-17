@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import path from "node:path";
 
-import { detectMime } from "openclaw/plugin-sdk";
+import { detectMime } from "./openclaw-compat.js";
 import { resolveOpenClawStateDir } from "./state-paths.js";
 
 export const DEFAULT_MEDIA_HOST = "0.0.0.0";

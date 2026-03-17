@@ -3,8 +3,12 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import type { OpenClawConfig, ReplyPayload } from "openclaw/plugin-sdk";
-import { extractOriginalFilename, extensionForMime } from "openclaw/plugin-sdk";
+import {
+  extensionForMime,
+  extractOriginalFilename,
+  type OpenClawConfig,
+  type ReplyPayload,
+} from "./openclaw-compat.js";
 import { runBinaryCommand, type BinaryCommandResult } from "./binary-command.js";
 import { CHANNEL_ID } from "./constants.js";
 import { getGeweRuntime } from "./runtime.js";

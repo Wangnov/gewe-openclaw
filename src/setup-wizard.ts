@@ -1,4 +1,4 @@
-import { DEFAULT_ACCOUNT_ID, type OpenClawConfig } from "openclaw/plugin-sdk";
+import { DEFAULT_ACCOUNT_ID, type OpenClawConfig } from "./openclaw-compat.js";
 
 import { listGeweAccountIds, resolveGeweAccount } from "./accounts.js";
 import { CHANNEL_CONFIG_KEY, CHANNEL_ID, stripChannelPrefix } from "./constants.js";

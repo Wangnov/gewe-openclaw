@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { DEFAULT_ACCOUNT_ID } from "openclaw/plugin-sdk";
+import { DEFAULT_ACCOUNT_ID } from "./openclaw-compat.js";
 
 import { listGeweAccountIds, resolveDefaultGeweAccountId } from "./accounts.ts";
 import type { CoreConfig } from "./types.ts";

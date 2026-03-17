@@ -129,6 +129,10 @@ test("GeWe pairing adapter 使用 code 模式", () => {
   assert.equal((gewePlugin.pairing as { mode?: string }).mode, "code");
 });
 
+test("GeWe channel plugin 在当前 OpenClaw plugin-sdk 下可构造 configSchema", () => {
+  assert.ok(gewePlugin.configSchema?.schema);
+});
+
 test("GeWe 提交纯配对码时按 accountId 作用域 redeem 并回复成功", async () => {
   let seen: unknown;
   installRuntime({

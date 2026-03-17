@@ -1,8 +1,35 @@
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
-import { emptyPluginConfigSchema } from "openclaw/plugin-sdk";
 
 import { gewePlugin } from "./src/channel.js";
 import { setGeweRuntime } from "./src/runtime.js";
+
+function emptyPluginConfigSchema() {
+  return {
+    safeParse(value: unknown) {
+      if (value === undefined) {
+        return { success: true as const, data: undefined };
+      }
+      if (!value || typeof value !== "object" || Array.isArray(value)) {
+        return {
+          success: false as const,
+          error: { issues: [{ path: [], message: "expected config object" }] },
+        };
+      }
+      if (Object.keys(value as Record<string, unknown>).length > 0) {
+        return {
+          success: false as const,
+          error: { issues: [{ path: [], message: "config must be empty" }] },
+        };
+      }
+      return { success: true as const, data: value };
+    },
+    jsonSchema: {
+      type: "object",
+      additionalProperties: false,
+      properties: {},
+    },
+  };
+}
 
 const plugin = {
   id: "gewe-openclaw",

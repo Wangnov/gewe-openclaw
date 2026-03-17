@@ -2,8 +2,13 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import type { OpenClawConfig, ReplyPayload, RuntimeEnv } from "openclaw/plugin-sdk";
-import { logInboundDrop, resolveControlCommandGate } from "openclaw/plugin-sdk";
+import {
+  logInboundDrop,
+  resolveControlCommandGate,
+  type OpenClawConfig,
+  type ReplyPayload,
+  type RuntimeEnv,
+} from "./openclaw-compat.js";
 
 import {
   buildGeweInboundMediaPayload,

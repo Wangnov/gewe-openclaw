@@ -1,5 +1,8 @@
-import type { AgentMediaPayload, OpenClawConfig } from "openclaw/plugin-sdk";
-import { buildAgentMediaPayload } from "openclaw/plugin-sdk";
+import {
+  buildAgentMediaPayload,
+  type AgentMediaPayload,
+  type OpenClawConfig,
+} from "./openclaw-compat.js";
 
 import type { GeweInboundMessage } from "./types.js";
 

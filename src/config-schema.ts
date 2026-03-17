@@ -6,7 +6,7 @@ import {
   MarkdownConfigSchema,
   ToolPolicySchema,
   requireOpenAllowFrom,
-} from "openclaw/plugin-sdk";
+} from "./openclaw-compat.js";
 import { z } from "zod";
 
 export const GeweGroupSchema = z

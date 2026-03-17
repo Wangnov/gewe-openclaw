@@ -5,7 +5,7 @@ import type {
   GroupPolicy,
   GroupToolPolicyConfig,
   OpenClawConfig,
-} from "openclaw/plugin-sdk";
+} from "./openclaw-compat.js";
 
 export type GeweGroupConfig = {
   requireMention?: boolean;

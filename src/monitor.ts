@@ -6,7 +6,7 @@ import {
   readJsonBodyWithLimit,
   type OpenClawConfig,
   type RuntimeEnv,
-} from "openclaw/plugin-sdk";
+} from "./openclaw-compat.js";
 
 import { resolveGeweAccount } from "./accounts.js";
 import { GeweDownloadQueue } from "./download-queue.js";

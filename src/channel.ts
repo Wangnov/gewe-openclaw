@@ -9,7 +9,7 @@ import {
   setAccountEnabledInConfigSection,
   type OpenClawConfig,
   type ChannelSetupInput,
-} from "openclaw/plugin-sdk";
+} from "./openclaw-compat.js";
 
 import { resolveGeweAccount, resolveDefaultGeweAccountId, listGeweAccountIds } from "./accounts.js";
 import { GeweConfigSchema } from "./config-schema.js";

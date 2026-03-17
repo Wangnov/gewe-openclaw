@@ -1,11 +1,13 @@
-import type { AllowlistMatch, ChannelGroupContext, GroupPolicy } from "openclaw/plugin-sdk";
 import {
   buildChannelKeyCandidates,
+  type AllowlistMatch,
+  type ChannelGroupContext,
+  type GroupPolicy,
   normalizeChannelSlug,
   resolveChannelEntryMatchWithFallback,
   resolveMentionGatingWithBypass,
   resolveNestedAllowlistDecision,
-} from "openclaw/plugin-sdk";
+} from "./openclaw-compat.js";
 
 import { mergeGeweGroups } from "./accounts.js";
 import { CHANNEL_CONFIG_KEY, CHANNEL_PREFIX_REGEX } from "./constants.js";

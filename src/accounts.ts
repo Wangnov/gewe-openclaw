@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 
-import { DEFAULT_ACCOUNT_ID, normalizeAccountId } from "openclaw/plugin-sdk";
+import { DEFAULT_ACCOUNT_ID, normalizeAccountId } from "./openclaw-compat.js";
 
 import { CHANNEL_CONFIG_KEY } from "./constants.js";
 import type { CoreConfig, GeweAccountConfig, GeweAppIdSource, GeweTokenSource } from "./types.js";
