@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
+import type { ReadableStream as WebReadableStream } from "node:stream/web";
 
 import type { ResolvedGeweAccount } from "./types.js";
 import { getGeweRuntime } from "./runtime.js";
@@ -352,7 +353,7 @@ async function downloadFile(url: string, dest: string): Promise<void> {
   if (!response.body) {
     throw new Error("download failed: empty response body");
   }
-  const stream = Readable.fromWeb(response.body as unknown as ReadableStream);
+  const stream = Readable.fromWeb(response.body as unknown as WebReadableStream);
   await pipeline(stream, createWriteStream(dest));
 }
 
