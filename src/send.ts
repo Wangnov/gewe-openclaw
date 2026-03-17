@@ -7,6 +7,12 @@ type GeweSendContext = {
   appId: string;
 };
 
+type GeweSendResponseData = {
+  msgId?: number | string;
+  newMsgId?: number | string;
+  createTime?: number | null;
+};
+
 function buildContext(account: ResolvedGeweAccount): GeweSendContext {
   const baseUrl = account.config.apiBaseUrl?.trim() || "https://www.geweapi.com";
   return { baseUrl, token: account.token, appId: account.appId };
@@ -14,11 +20,7 @@ function buildContext(account: ResolvedGeweAccount): GeweSendContext {
 
 function resolveSendResult(params: {
   toWxid: string;
-  data?: {
-    msgId?: number | string;
-    newMsgId?: number | string;
-    createTime?: number | null;
-  };
+  data?: GeweSendResponseData;
 }): GeweSendResult {
   const msgId = params.data?.newMsgId ?? params.data?.msgId ?? "ok";
   const createTime = params.data?.createTime;
@@ -37,11 +39,7 @@ export async function sendTextGewe(params: {
   ats?: string;
 }): Promise<GeweSendResult> {
   const ctx = buildContext(params.account);
-  const resp = await postGeweJson<{
-    msgId?: number | string;
-    newMsgId?: number | string;
-    createTime?: number;
-  }>({
+  const resp = await postGeweJson<GeweSendResponseData>({
     baseUrl: ctx.baseUrl,
     token: ctx.token,
     path: "/gewe/v2/api/message/postText",
@@ -62,7 +60,7 @@ export async function sendImageGewe(params: {
   imgUrl: string;
 }): Promise<GeweSendResult> {
   const ctx = buildContext(params.account);
-  const resp = await postGeweJson({
+  const resp = await postGeweJson<GeweSendResponseData>({
     baseUrl: ctx.baseUrl,
     token: ctx.token,
     path: "/gewe/v2/api/message/postImage",
@@ -83,7 +81,7 @@ export async function sendVoiceGewe(params: {
   voiceDuration: number;
 }): Promise<GeweSendResult> {
   const ctx = buildContext(params.account);
-  const resp = await postGeweJson({
+  const resp = await postGeweJson<GeweSendResponseData>({
     baseUrl: ctx.baseUrl,
     token: ctx.token,
     path: "/gewe/v2/api/message/postVoice",
@@ -106,7 +104,7 @@ export async function sendVideoGewe(params: {
   videoDuration: number;
 }): Promise<GeweSendResult> {
   const ctx = buildContext(params.account);
-  const resp = await postGeweJson({
+  const resp = await postGeweJson<GeweSendResponseData>({
     baseUrl: ctx.baseUrl,
     token: ctx.token,
     path: "/gewe/v2/api/message/postVideo",
@@ -129,7 +127,7 @@ export async function sendFileGewe(params: {
   fileName: string;
 }): Promise<GeweSendResult> {
   const ctx = buildContext(params.account);
-  const resp = await postGeweJson({
+  const resp = await postGeweJson<GeweSendResponseData>({
     baseUrl: ctx.baseUrl,
     token: ctx.token,
     path: "/gewe/v2/api/message/postFile",
@@ -153,7 +151,7 @@ export async function sendLinkGewe(params: {
   thumbUrl: string;
 }): Promise<GeweSendResult> {
   const ctx = buildContext(params.account);
-  const resp = await postGeweJson({
+  const resp = await postGeweJson<GeweSendResponseData>({
     baseUrl: ctx.baseUrl,
     token: ctx.token,
     path: "/gewe/v2/api/message/postLink",
