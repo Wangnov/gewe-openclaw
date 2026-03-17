@@ -168,7 +168,7 @@ export const gewePlugin: GeweChannelPlugin<ResolvedGeweAccount> = {
     resolveToolPolicy: resolveGeweGroupToolPolicy,
   },
   messaging: {
-    normalizeTarget: normalizeGeweMessagingTarget,
+    normalizeTarget: (raw) => normalizeGeweMessagingTarget(raw) ?? undefined,
     targetResolver: {
       looksLikeId: looksLikeGeweTargetId,
       hint: "<wxid|@chatroom>",
@@ -355,7 +355,7 @@ export const gewePlugin: GeweChannelPlugin<ResolvedGeweAccount> = {
 
         const accounts =
           nextSection.accounts && typeof nextSection.accounts === "object"
-            ? { ...nextSection.accounts }
+            ? ({ ...nextSection.accounts } as Record<string, Record<string, unknown>>)
             : undefined;
         if (accounts && accountId in accounts) {
           const entry = accounts[accountId];
@@ -436,10 +436,12 @@ export const gewePlugin: GeweChannelPlugin<ResolvedGeweAccount> = {
       const section = (namedConfig.channels?.[CHANNEL_CONFIG_KEY] ?? {}) as Record<
         string,
         unknown
-      >;
+      > & {
+        accounts?: Record<string, Record<string, unknown>>;
+      };
       const useAccountPath = accountId !== DEFAULT_ACCOUNT_ID;
       const base = useAccountPath
-        ? (section.accounts?.[accountId] as Record<string, unknown> | undefined) ?? {}
+        ? section.accounts?.[accountId] ?? {}
         : section;
       const nextEntry = {
         ...base,
