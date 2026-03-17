@@ -4,6 +4,7 @@ import type {
   DmPolicy,
   GroupPolicy,
   GroupToolPolicyConfig,
+  OpenClawConfig,
 } from "openclaw/plugin-sdk";
 
 export type GeweGroupConfig = {
@@ -84,11 +85,13 @@ export type GeweConfig = {
   accounts?: Record<string, GeweAccountConfig>;
 } & GeweAccountConfig;
 
-export type CoreConfig = {
-  channels?: {
+export type CoreConfig = OpenClawConfig & {
+  channels?: OpenClawConfig["channels"] & {
+    defaults?: {
+      groupPolicy?: GroupPolicy;
+    };
     "gewe-openclaw"?: GeweConfig;
   };
-  [key: string]: unknown;
 };
 
 export type GeweTokenSource = "env" | "config" | "configFile" | "none";
