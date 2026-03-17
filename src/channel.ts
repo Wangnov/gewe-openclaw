@@ -8,7 +8,6 @@ import {
   normalizeAccountId,
   PAIRING_APPROVED_MESSAGE,
   setAccountEnabledInConfigSection,
-  type ChannelPlugin,
   type OpenClawConfig,
   type ChannelSetupInput,
 } from "openclaw/plugin-sdk";
@@ -30,6 +29,7 @@ import { resolveGeweGroupToolPolicy, resolveGeweRequireMention } from "./policy.
 import { getGeweRuntime } from "./runtime.js";
 import { sendTextGewe } from "./send.js";
 import { geweSetupWizard } from "./setup-wizard.js";
+import type { GeweChannelPlugin } from "./setup-wizard-types.js";
 import type { CoreConfig, ResolvedGeweAccount } from "./types.js";
 
 const meta = {
@@ -53,7 +53,7 @@ type GeweSetupInput = ChannelSetupInput & {
   apiBaseUrl?: string;
 };
 
-export const gewePlugin: ChannelPlugin<ResolvedGeweAccount> = {
+export const gewePlugin: GeweChannelPlugin<ResolvedGeweAccount> = {
   id: CHANNEL_ID,
   meta,
   setupWizard: geweSetupWizard,

@@ -1,11 +1,8 @@
-import {
-  DEFAULT_ACCOUNT_ID,
-  type ChannelSetupWizard,
-  type OpenClawConfig,
-} from "openclaw/plugin-sdk";
+import { DEFAULT_ACCOUNT_ID, type OpenClawConfig } from "openclaw/plugin-sdk";
 
 import { listGeweAccountIds, resolveGeweAccount } from "./accounts.js";
 import { CHANNEL_CONFIG_KEY, CHANNEL_ID, stripChannelPrefix } from "./constants.js";
+import type { GeweSetupWizard } from "./setup-wizard-types.js";
 import type { CoreConfig, GeweAccountConfig } from "./types.js";
 
 const DEFAULT_WEBHOOK_HOST = "0.0.0.0";
@@ -154,7 +151,7 @@ function trimTrailingSlash(value: string): string {
   return value.trim().replace(/\/$/, "");
 }
 
-export const geweSetupWizard: ChannelSetupWizard = {
+export const geweSetupWizard: GeweSetupWizard = {
   channel: CHANNEL_ID,
   status: {
     configuredLabel: "configured",
@@ -394,14 +391,14 @@ export const geweSetupWizard: ChannelSetupWizard = {
         placeholder: "gewe-openclaw/outbound",
         initialValue: existing.s3KeyPrefix,
       });
-      const s3UrlMode = await prompter.select({
+      const s3UrlMode = (await prompter.select({
         message: "S3 URL mode",
         options: [
           { value: "public", label: "public (default)" },
           { value: "presigned", label: "presigned" },
         ],
         initialValue: existing.s3UrlMode ?? "public",
-      });
+      })) as NonNullable<GeweAccountConfig["s3UrlMode"]>;
       const s3PublicBaseUrl =
         s3UrlMode === "public"
           ? await prompter.text({
