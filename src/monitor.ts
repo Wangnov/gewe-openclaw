@@ -335,7 +335,10 @@ export async function monitorGeweProvider(
   });
 
   await webhookServer.start();
-  runtime.log?.(`[${account.accountId}] GeWe webhook server listening on ${host}:${port}${path}`);
+  const webhookPublicUrl =
+    account.config.webhookPublicUrl?.trim() ||
+    `http://${host === "0.0.0.0" ? "localhost" : host}:${port}${path}`;
+  runtime.log?.(`[${account.accountId}] GeWe webhook server listening on ${webhookPublicUrl}`);
 
   let mediaStop: (() => void) | undefined;
   const shouldStartMedia =
