@@ -1,10 +1,10 @@
-import { createReadStream, existsSync } from "node:fs";
+import { createReadStream } from "node:fs";
 import fs from "node:fs/promises";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
-import os from "node:os";
 import path from "node:path";
 
 import { detectMime } from "openclaw/plugin-sdk";
+import { resolveOpenClawStateDir } from "./state-paths.js";
 
 export const DEFAULT_MEDIA_HOST = "0.0.0.0";
 export const DEFAULT_MEDIA_PORT = 18787;
@@ -16,44 +16,8 @@ function normalizePath(value: string): string {
   return trimmed.startsWith("/") ? trimmed.replace(/\/+$/, "") : `/${trimmed.replace(/\/+$/, "")}`;
 }
 
-function resolveUserPath(input: string): string {
-  const trimmed = input.trim();
-  if (!trimmed) return trimmed;
-  if (trimmed.startsWith("~")) {
-    const expanded = trimmed.replace(/^~(?=$|[\\/])/, os.homedir());
-    return path.resolve(expanded);
-  }
-  return path.resolve(trimmed);
-}
-
-function resolveConfigDir(
-  env: NodeJS.ProcessEnv = process.env,
-  homedir: () => string = os.homedir,
-): string {
-  const override = env.OPENCLAW_STATE_DIR?.trim() || env.CLAWDBOT_STATE_DIR?.trim();
-  if (override) return resolveUserPath(override);
-  const legacyDirs = [".clawdbot", ".moltbot", ".moldbot"].map((dir) =>
-    path.join(homedir(), dir),
-  );
-  const newDir = path.join(homedir(), ".openclaw");
-  try {
-    if (existsSync(newDir)) return newDir;
-    const existingLegacy = legacyDirs.find((dir) => {
-      try {
-        return existsSync(dir);
-      } catch {
-        return false;
-      }
-    });
-    if (existingLegacy) return existingLegacy;
-  } catch {
-    // best-effort
-  }
-  return newDir;
-}
-
 function resolveMediaDir() {
-  return path.join(resolveConfigDir(), "media");
+  return path.join(resolveOpenClawStateDir(), "media");
 }
 
 function resolveBaseUrl(req: IncomingMessage): string {
