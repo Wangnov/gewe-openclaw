@@ -29,10 +29,25 @@ function listConfiguredAccountIds(cfg: CoreConfig): string[] {
   return [...ids];
 }
 
+function hasTopLevelDefaultAccount(cfg: CoreConfig): boolean {
+  const section = cfg.channels?.[CHANNEL_CONFIG_KEY];
+  const hasEnvCredentials = Boolean(
+    process.env.GEWE_TOKEN?.trim() || process.env.GEWE_APP_ID?.trim(),
+  );
+  if (!section || typeof section !== "object") return hasEnvCredentials;
+  return (
+    hasEnvCredentials ||
+    Object.keys(section).some((key) => key !== "accounts" && key !== "enabled")
+  );
+}
+
 export function listGeweAccountIds(cfg: CoreConfig): string[] {
-  const ids = listConfiguredAccountIds(cfg);
-  if (ids.length === 0) return [DEFAULT_ACCOUNT_ID];
-  return ids.sort((a, b) => a.localeCompare(b));
+  const ids = new Set(listConfiguredAccountIds(cfg));
+  if (hasTopLevelDefaultAccount(cfg)) {
+    ids.add(DEFAULT_ACCOUNT_ID);
+  }
+  if (ids.size === 0) return [DEFAULT_ACCOUNT_ID];
+  return [...ids].sort((a, b) => a.localeCompare(b));
 }
 
 export function resolveDefaultGeweAccountId(cfg: CoreConfig): string {
