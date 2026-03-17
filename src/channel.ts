@@ -181,6 +181,7 @@ export const gewePlugin: GeweChannelPlugin<ResolvedGeweAccount> = {
       return core.channel.text.chunkMarkdownText(text, limit);
     },
     chunkerMode: "markdown",
+    textChunkLimit: 4000,
     resolveTarget: ({ to, allowFrom, mode }) => {
       const trimmed = to?.trim() ?? "";
       const allowListRaw = (allowFrom ?? []).map((entry) => String(entry).trim()).filter(Boolean);
