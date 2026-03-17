@@ -1,6 +1,12 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 
-import type { OpenClawConfig, RuntimeEnv } from "openclaw/plugin-sdk";
+import {
+  DEFAULT_WEBHOOK_BODY_TIMEOUT_MS,
+  DEFAULT_WEBHOOK_MAX_BODY_BYTES,
+  readJsonBodyWithLimit,
+  type OpenClawConfig,
+  type RuntimeEnv,
+} from "openclaw/plugin-sdk";
 
 import { resolveGeweAccount } from "./accounts.js";
 import { GeweDownloadQueue } from "./download-queue.js";
@@ -43,15 +49,6 @@ function isDuplicate(key: string): boolean {
 function formatError(err: unknown): string {
   if (err instanceof Error) return err.message;
   return typeof err === "string" ? err : JSON.stringify(err);
-}
-
-function readBody(req: IncomingMessage): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const chunks: Buffer[] = [];
-    req.on("data", (chunk: Buffer) => chunks.push(chunk));
-    req.on("end", () => resolve(Buffer.concat(chunks).toString("utf-8")));
-    req.on("error", reject);
-  });
 }
 
 function resolveWebhookToken(req: IncomingMessage): string | undefined {
@@ -195,8 +192,25 @@ export function createGeweWebhookServer(opts: GeweWebhookServerOptions): {
     }
 
     try {
-      const body = await readBody(req);
-      const payload = parseWebhookPayload(body);
+      const bodyResult = await readJsonBodyWithLimit(req, {
+        maxBytes: DEFAULT_WEBHOOK_MAX_BODY_BYTES,
+        timeoutMs: DEFAULT_WEBHOOK_BODY_TIMEOUT_MS,
+        emptyObjectOnEmpty: false,
+      });
+      if (!bodyResult.ok) {
+        res.writeHead(
+          bodyResult.code === "PAYLOAD_TOO_LARGE"
+            ? 413
+            : bodyResult.code === "REQUEST_BODY_TIMEOUT"
+              ? 408
+              : 400,
+          { "Content-Type": "application/json" },
+        );
+        res.end(JSON.stringify({ error: bodyResult.error || "Invalid JSON payload" }));
+        return;
+      }
+
+      const payload = parseWebhookPayload(JSON.stringify(bodyResult.value));
       if (!payload) {
         res.writeHead(400, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ error: "Invalid JSON payload" }));
