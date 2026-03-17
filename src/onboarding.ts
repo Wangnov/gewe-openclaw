@@ -265,14 +265,14 @@ export const geweOnboarding: GeweOnboardingAdapter = {
         placeholder: "gewe-openclaw/outbound",
         initialValue: existing.s3KeyPrefix,
       });
-      const s3UrlMode = await ctx.prompter.select({
+      const s3UrlMode = (await ctx.prompter.select({
         message: "S3 URL mode",
         options: [
           { value: "public", label: "public (default)" },
           { value: "presigned", label: "presigned" },
         ],
         initialValue: existing.s3UrlMode ?? "public",
-      });
+      })) as NonNullable<GeweAccountConfig["s3UrlMode"]>;
       const s3PublicBaseUrl =
         s3UrlMode === "public"
           ? await ctx.prompter.text({
