@@ -5,10 +5,11 @@ import { fileURLToPath } from "node:url";
 
 import type { OpenClawConfig, ReplyPayload } from "openclaw/plugin-sdk";
 import { extractOriginalFilename, extensionForMime } from "openclaw/plugin-sdk";
+import { runBinaryCommand, type BinaryCommandResult } from "./binary-command.js";
 import { CHANNEL_ID } from "./constants.js";
 import { getGeweRuntime } from "./runtime.js";
 import { resolveS3Config, uploadToS3 } from "./s3.js";
-import { ensureRustSilkBinary } from "./silk.js";
+import { buildRustSilkEncodeArgs, ensureRustSilkBinary } from "./silk.js";
 import {
   sendFileGewe,
   sendImageGewe,
@@ -265,7 +266,187 @@ function resolveSilkArgs(params: {
   return next;
 }
 
-async function convertAudioToSilk(params: {
+function trimPcmBuffer(params: {
+  buffer: Buffer;
+  sampleRate: number;
+}): { buffer: Buffer; durationMs: number } {
+  let pcmBuffer = params.buffer;
+  const frameSamples = params.sampleRate % 50 === 0 ? params.sampleRate / 50 : 0; // 20ms frames
+  const frameBytes = frameSamples > 0 ? frameSamples * PCM_BYTES_PER_SAMPLE : 0;
+  if (frameBytes > 0 && pcmBuffer.length % frameBytes !== 0) {
+    const trimmedSize = pcmBuffer.length - (pcmBuffer.length % frameBytes);
+    if (trimmedSize <= 0) {
+      throw new Error("ffmpeg produced empty PCM after frame trim");
+    }
+    pcmBuffer = Buffer.from(pcmBuffer.subarray(0, trimmedSize));
+  }
+  if (!pcmBuffer.length) {
+    throw new Error("ffmpeg produced empty PCM");
+  }
+  return {
+    buffer: pcmBuffer,
+    durationMs: Math.max(
+      1,
+      Math.round((pcmBuffer.length / (params.sampleRate * PCM_BYTES_PER_SAMPLE)) * 1000),
+    ),
+  };
+}
+
+function formatBinaryCommandFailure(params: {
+  label: string;
+  result: BinaryCommandResult;
+}): string {
+  if (params.result.timedOut) {
+    return `${params.label} timed out after ${DEFAULT_VOICE_TIMEOUT_MS}ms`;
+  }
+  const detail = params.result.stderr.trim();
+  if (detail) return detail;
+  if (params.result.signal) return `signal ${params.result.signal}`;
+  return `exit code ${params.result.code ?? "?"}`;
+}
+
+async function convertAudioToSilkViaPipe(params: {
+  sourcePath: string;
+  ffmpegPath: string;
+  silkPath: string;
+  argTemplates: string[][];
+  sampleRate: number;
+}): Promise<{ buffer: Buffer; durationMs: number }> {
+  const ffmpegArgs = [
+    "-y",
+    "-i",
+    params.sourcePath,
+    "-ac",
+    "1",
+    "-ar",
+    String(params.sampleRate),
+    "-f",
+    "s16le",
+    "pipe:1",
+  ];
+  const ffmpegResult = await runBinaryCommand({
+    argv: [params.ffmpegPath, ...ffmpegArgs],
+    timeoutMs: DEFAULT_VOICE_TIMEOUT_MS,
+  });
+  if (ffmpegResult.code !== 0) {
+    throw new Error(
+      `ffmpeg pipe failed: ${formatBinaryCommandFailure({
+        label: "ffmpeg",
+        result: ffmpegResult,
+      })}`,
+    );
+  }
+
+  const trimmedPcm = trimPcmBuffer({
+    buffer: ffmpegResult.stdout,
+    sampleRate: params.sampleRate,
+  });
+
+  let lastError: string | null = null;
+  for (const template of params.argTemplates) {
+    const args = resolveSilkArgs({
+      template,
+      input: "-",
+      output: "-",
+      sampleRate: params.sampleRate,
+    });
+    const result = await runBinaryCommand({
+      argv: [params.silkPath, ...args],
+      timeoutMs: DEFAULT_VOICE_TIMEOUT_MS,
+      input: trimmedPcm.buffer,
+    });
+    if (result.code === 0 && result.stdout.length > 0) {
+      return { buffer: result.stdout, durationMs: trimmedPcm.durationMs };
+    }
+    lastError =
+      result.code === 0
+        ? "encoder produced empty stdout"
+        : formatBinaryCommandFailure({ label: "silk", result });
+  }
+
+  throw new Error(`silk encoder pipe failed (${params.silkPath}): ${lastError ?? "unknown error"}`);
+}
+
+async function convertAudioToSilkViaFiles(params: {
+  sourcePath: string;
+  ffmpegPath: string;
+  silkPath: string;
+  argTemplates: string[][];
+  sampleRate: number;
+}): Promise<{ buffer: Buffer; durationMs: number }> {
+  const core = getGeweRuntime();
+  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "moltbot-gewe-voice-"));
+  const pcmPath = path.join(tmpDir, "voice.pcm");
+  const silkOutPath = path.join(tmpDir, "voice.silk");
+
+  try {
+    const ffmpegArgs = [
+      "-y",
+      "-i",
+      params.sourcePath,
+      "-ac",
+      "1",
+      "-ar",
+      String(params.sampleRate),
+      "-f",
+      "s16le",
+      pcmPath,
+    ];
+    const ffmpegResult = await core.system.runCommandWithTimeout(
+      [params.ffmpegPath, ...ffmpegArgs],
+      { timeoutMs: DEFAULT_VOICE_TIMEOUT_MS },
+    );
+    if (ffmpegResult.code !== 0) {
+      throw new Error(
+        `ffmpeg failed: code=${ffmpegResult.code ?? "?"} stderr=${ffmpegResult.stderr.trim()}`,
+      );
+    }
+
+    const trimmedPcm = trimPcmBuffer({
+      buffer: await fs.readFile(pcmPath),
+      sampleRate: params.sampleRate,
+    });
+    await fs.writeFile(pcmPath, trimmedPcm.buffer);
+
+    let encoded = false;
+    let lastError: string | null = null;
+    for (const template of params.argTemplates) {
+      const args = resolveSilkArgs({
+        template,
+        input: pcmPath,
+        output: silkOutPath,
+        sampleRate: params.sampleRate,
+      });
+      const result = await core.system.runCommandWithTimeout([params.silkPath, ...args], {
+        timeoutMs: DEFAULT_VOICE_TIMEOUT_MS,
+      });
+      if (result.code === 0) {
+        const outStat = await fs.stat(silkOutPath).catch(() => null);
+        if (outStat?.isFile()) {
+          encoded = true;
+          break;
+        }
+      }
+      lastError = result.stderr.trim() || `exit code ${result.code ?? "?"}`;
+    }
+    if (!encoded) {
+      throw new Error(
+        `silk encoder failed (${params.silkPath}): ${lastError ?? "unknown error"}`,
+      );
+    }
+
+    const buffer = await fs.readFile(silkOutPath);
+    if (!buffer.length) {
+      throw new Error("silk encoder produced empty output");
+    }
+
+    return { buffer, durationMs: trimmedPcm.durationMs };
+  } finally {
+    await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
+export async function convertAudioToSilk(params: {
   account: ResolvedGeweAccount;
   sourcePath: string;
 }): Promise<{ buffer: Buffer; durationMs: number } | null> {
@@ -281,17 +462,11 @@ async function convertAudioToSilk(params: {
     ["{input}", "{output}", "{sampleRate}"],
     ["{input}", "{output}"],
   ];
-  const rustArgs = [
-    "encode",
-    "-i",
-    "{input}",
-    "-o",
-    "{output}",
-    "--sample-rate",
-    "{sampleRate}",
-    "--tencent",
-    "--quiet",
-  ];
+  const rustArgs = buildRustSilkEncodeArgs({
+    input: "{input}",
+    output: "{output}",
+    sampleRate,
+  });
   const customPath = params.account.config.voiceSilkPath?.trim();
   const customArgs =
     params.account.config.voiceSilkArgs?.length ? [params.account.config.voiceSilkArgs] : [];
@@ -305,88 +480,31 @@ async function convertAudioToSilk(params: {
     }
   }
 
-  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "moltbot-gewe-voice-"));
-  const pcmPath = path.join(tmpDir, "voice.pcm");
-  const silkOutPath = path.join(tmpDir, "voice.silk");
-
   try {
-    const ffmpegArgs = [
-      "-y",
-      "-i",
-      params.sourcePath,
-      "-ac",
-      "1",
-      "-ar",
-      String(sampleRate),
-      "-f",
-      "s16le",
-      pcmPath,
-    ];
-    const ffmpegResult = await core.system.runCommandWithTimeout(
-      [ffmpegPath, ...ffmpegArgs],
-      { timeoutMs: DEFAULT_VOICE_TIMEOUT_MS },
-    );
-    if (ffmpegResult.code !== 0) {
-      throw new Error(
-        `ffmpeg failed: code=${ffmpegResult.code ?? "?"} stderr=${ffmpegResult.stderr.trim()}`,
-      );
-    }
-
-    let pcmStat = await fs.stat(pcmPath);
-    const frameSamples = sampleRate % 50 === 0 ? sampleRate / 50 : 0; // 20ms frames
-    const frameBytes = frameSamples > 0 ? frameSamples * PCM_BYTES_PER_SAMPLE : 0;
-    if (frameBytes > 0 && pcmStat.size % frameBytes !== 0) {
-      const trimmedSize = pcmStat.size - (pcmStat.size % frameBytes);
-      if (trimmedSize <= 0) {
-        throw new Error("ffmpeg produced empty PCM after frame trim");
+    if (params.account.config.voiceSilkPipe === true) {
+      try {
+        return await convertAudioToSilkViaPipe({
+          sourcePath: params.sourcePath,
+          ffmpegPath,
+          silkPath,
+          argTemplates,
+          sampleRate,
+        });
+      } catch (err) {
+        logger.warn?.(`gewe voice pipe convert failed, falling back to temp files: ${String(err)}`);
       }
-      await fs.truncate(pcmPath, trimmedSize);
-      pcmStat = await fs.stat(pcmPath);
     }
 
-    const durationMs = Math.max(
-      1,
-      Math.round((pcmStat.size / (sampleRate * PCM_BYTES_PER_SAMPLE)) * 1000),
-    );
-
-    let encoded = false;
-    let lastError: string | null = null;
-    for (const template of argTemplates) {
-      const args = resolveSilkArgs({
-        template,
-        input: pcmPath,
-        output: silkOutPath,
-        sampleRate,
-      });
-      const result = await core.system.runCommandWithTimeout([silkPath, ...args], {
-        timeoutMs: DEFAULT_VOICE_TIMEOUT_MS,
-      });
-      if (result.code === 0) {
-        const outStat = await fs.stat(silkOutPath).catch(() => null);
-        if (outStat?.isFile()) {
-          encoded = true;
-          break;
-        }
-      }
-      lastError = result.stderr.trim() || `exit code ${result.code ?? "?"}`;
-    }
-    if (!encoded) {
-      throw new Error(
-        `silk encoder failed (${silkPath}): ${lastError ?? "unknown error"}`,
-      );
-    }
-
-    const buffer = await fs.readFile(silkOutPath);
-    if (!buffer.length) {
-      throw new Error("silk encoder produced empty output");
-    }
-
-    return { buffer, durationMs };
+    return await convertAudioToSilkViaFiles({
+      sourcePath: params.sourcePath,
+      ffmpegPath,
+      silkPath,
+      argTemplates,
+      sampleRate,
+    });
   } catch (err) {
     logger.warn?.(`gewe voice convert failed: ${String(err)}`);
     return null;
-  } finally {
-    await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
   }
 }
 
