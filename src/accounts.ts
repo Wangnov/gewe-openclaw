@@ -29,6 +29,17 @@ function listConfiguredAccountIds(cfg: CoreConfig): string[] {
   return [...ids];
 }
 
+export function mergeGeweGroups(
+  baseGroups?: GeweAccountConfig["groups"],
+  accountGroups?: GeweAccountConfig["groups"],
+): GeweAccountConfig["groups"] | undefined {
+  const merged = { ...(baseGroups ?? {}) };
+  for (const [key, value] of Object.entries(accountGroups ?? {})) {
+    merged[key] = merged[key] ? { ...merged[key], ...value } : value;
+  }
+  return Object.keys(merged).length > 0 ? merged : undefined;
+}
+
 function hasTopLevelDefaultAccount(cfg: CoreConfig): boolean {
   const section = cfg.channels?.[CHANNEL_CONFIG_KEY];
   const hasEnvCredentials = Boolean(
@@ -71,7 +82,12 @@ function mergeGeweAccountConfig(cfg: CoreConfig, accountId: string): GeweAccount
     accounts?: unknown;
   };
   const account = resolveAccountConfig(cfg, accountId) ?? {};
-  return { ...base, ...account };
+  const merged = { ...base, ...account };
+  const groups = mergeGeweGroups(base.groups, account.groups);
+  if (groups) {
+    merged.groups = groups;
+  }
+  return merged;
 }
 
 function resolveToken(

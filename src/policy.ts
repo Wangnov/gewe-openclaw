@@ -7,6 +7,7 @@ import {
   resolveNestedAllowlistDecision,
 } from "openclaw/plugin-sdk";
 
+import { mergeGeweGroups } from "./accounts.js";
 import { CHANNEL_CONFIG_KEY, CHANNEL_PREFIX_REGEX } from "./constants.js";
 import type { GeweGroupConfig } from "./types.js";
 
@@ -99,11 +100,12 @@ export function resolveGeweGroupToolPolicy(
   const groupId = params.groupId?.trim();
   if (!groupId) return undefined;
   const groupName = params.groupChannel?.trim() || undefined;
+  const baseGroups = cfg.channels?.[CHANNEL_CONFIG_KEY]?.groups;
   const accountGroups =
     params.accountId && cfg.channels?.[CHANNEL_CONFIG_KEY]?.accounts?.[params.accountId]?.groups
       ? cfg.channels?.[CHANNEL_CONFIG_KEY]?.accounts?.[params.accountId]?.groups
       : undefined;
-  const groups = accountGroups ?? cfg.channels?.[CHANNEL_CONFIG_KEY]?.groups;
+  const groups = mergeGeweGroups(baseGroups, accountGroups);
   const match = resolveGeweGroupMatch({
     groups,
     groupId,
