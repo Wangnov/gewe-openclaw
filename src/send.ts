@@ -261,3 +261,32 @@ export async function sendMiniAppGewe(params: {
   const data = assertGeweOk(resp, "postMiniApp");
   return resolveSendResult({ toWxid: params.toWxid, data });
 }
+
+export async function revokeMessageGewe(params: {
+  account: ResolvedGeweAccount;
+  toWxid: string;
+  msgId: string;
+  newMsgId: string;
+  createTime: string;
+}): Promise<GeweSendResult> {
+  const ctx = buildContext(params.account);
+  const resp = await postGeweJson<GeweSendResponseData>({
+    baseUrl: ctx.baseUrl,
+    token: ctx.token,
+    path: "/gewe/v2/api/message/revokeMsg",
+    body: {
+      appId: ctx.appId,
+      toWxid: params.toWxid,
+      msgId: params.msgId,
+      newMsgId: params.newMsgId,
+      createTime: params.createTime,
+    },
+  });
+  assertGeweOk(resp, "revokeMsg");
+  return {
+    toWxid: params.toWxid,
+    messageId: params.msgId,
+    newMessageId: params.newMsgId,
+    timestamp: Number.parseInt(params.createTime, 10) * 1000 || undefined,
+  };
+}

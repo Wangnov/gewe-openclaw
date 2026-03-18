@@ -25,6 +25,7 @@ import {
   sendTextGewe,
   sendVideoGewe,
   sendVoiceGewe,
+  revokeMessageGewe,
 } from "./send.js";
 import type { GeweSendResult, ResolvedGeweAccount } from "./types.js";
 
@@ -48,6 +49,11 @@ type GeweChannelData = {
     coverImgUrl: string;
     title: string;
     userName: string;
+  };
+  revoke?: {
+    msgId: string | number;
+    newMsgId: string | number;
+    createTime: string | number;
   };
   link?: {
     title: string;
@@ -924,6 +930,27 @@ export async function deliverGewePayload(params: {
       coverImgUrl: geweData.miniApp.coverImgUrl.trim(),
       title: geweData.miniApp.title.trim(),
       userName: geweData.miniApp.userName.trim(),
+    });
+    core.channel.activity.record({
+      channel: CHANNEL_ID,
+      accountId: account.accountId,
+      direction: "outbound",
+    });
+    statusSink?.({ lastOutboundAt: Date.now() });
+    return result;
+  }
+
+  if (
+    geweData?.revoke?.msgId != null &&
+    geweData.revoke.newMsgId != null &&
+    geweData.revoke.createTime != null
+  ) {
+    const result = await revokeMessageGewe({
+      account,
+      toWxid,
+      msgId: String(geweData.revoke.msgId).trim(),
+      newMsgId: String(geweData.revoke.newMsgId).trim(),
+      createTime: String(geweData.revoke.createTime).trim(),
     });
     core.channel.activity.record({
       channel: CHANNEL_ID,

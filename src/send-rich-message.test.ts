@@ -371,3 +371,77 @@ test("deliverGewePayload 在 miniApp 存在时会优先发送 GeWe 小程序", a
     assert.match(calls[0]?.url ?? "", /\/gewe\/v2\/api\/message\/postMiniApp$/);
   });
 });
+
+test("revokeMessageGewe 会向 GeWe revokeMsg 发送撤回元数据", async () => {
+  installRuntime();
+  const sendModule = (await import("./send.ts")) as {
+    revokeMessageGewe?: (params: {
+      account: ResolvedGeweAccount;
+      toWxid: string;
+      msgId: string;
+      newMsgId: string;
+      createTime: string;
+    }) => Promise<unknown>;
+  };
+
+  assert.equal(typeof sendModule.revokeMessageGewe, "function");
+
+  await withMockFetch(async (calls) => {
+    await sendModule.revokeMessageGewe?.({
+      account: createAccount(),
+      toWxid: "wxid_target",
+      msgId: "769533801",
+      newMsgId: "5271007655758710001",
+      createTime: "1704163145",
+    });
+
+    assert.equal(calls.length, 1);
+    assert.match(calls[0]?.url ?? "", /\/gewe\/v2\/api\/message\/revokeMsg$/);
+    const body = JSON.parse(String(calls[0]?.init?.body ?? "{}")) as Record<string, unknown>;
+    assert.deepEqual(body, {
+      appId: "app-rich",
+      toWxid: "wxid_target",
+      msgId: "769533801",
+      newMsgId: "5271007655758710001",
+      createTime: "1704163145",
+    });
+  });
+});
+
+test("deliverGewePayload 在 revoke 存在时会优先发送 GeWe 撤回请求", async () => {
+  installRuntime();
+  const deliveryModule = (await import("./delivery.ts")) as {
+    deliverGewePayload?: (params: {
+      payload: {
+        text?: string;
+        channelData?: Record<string, unknown>;
+      };
+      account: ResolvedGeweAccount;
+      cfg: {};
+      toWxid: string;
+    }) => Promise<unknown>;
+  };
+
+  await withMockFetch(async (calls) => {
+    await deliveryModule.deliverGewePayload?.({
+      payload: {
+        text: "这段纯文本不应抢占 revoke",
+        channelData: {
+          "gewe-openclaw": {
+            revoke: {
+              msgId: "769533801",
+              newMsgId: "5271007655758710001",
+              createTime: "1704163145",
+            },
+          },
+        },
+      },
+      account: createAccount(),
+      cfg: {},
+      toWxid: "wxid_target",
+    });
+
+    assert.equal(calls.length, 1);
+    assert.match(calls[0]?.url ?? "", /\/gewe\/v2\/api\/message\/revokeMsg$/);
+  });
+});
