@@ -145,3 +145,86 @@ test("GeWe 链接 appmsg 会继续保留链接正文并附带 xml 元数据", as
   assert.equal(capture.dispatches[0]?.ctx.GeWeAppMsgType, 5);
   assert.equal(capture.dispatches[0]?.ctx.MsgType, 49);
 });
+
+test("GeWe 引用消息会归一成可读正文并透传上下文字段", async () => {
+  const capture = {
+    dispatches: [] as Array<{ ctx: Record<string, unknown>; replyOptions: Record<string, unknown> }>,
+  };
+  installRuntime(capture);
+  const xml = [
+    "<?xml version=\"1.0\"?>",
+    "<msg>",
+    "<appmsg appid=\"\" sdkver=\"0\">",
+    "<title>回复内容</title>",
+    "<type>57</type>",
+    "<refermsg>",
+    "<type>1</type>",
+    "<svrid>3617029648443513152</svrid>",
+    "<fromusr>wxid_phyyedw9xap22</fromusr>",
+    "<chatusr>wxid_phyyedw9xap22</chatusr>",
+    "<displayname>朝夕。</displayname>",
+    "<content>原始文本</content>",
+    "</refermsg>",
+    "</appmsg>",
+    "</msg>",
+  ].join("");
+
+  await handleGeweInboundBatch({
+    messages: [createMessage({ xml })],
+    account: createAccount({ dmPolicy: "open" }),
+    config: {} as CoreConfig,
+    runtime: TEST_RUNTIME,
+    downloadQueue: new GeweDownloadQueue({ minDelayMs: 0, maxDelayMs: 0 }),
+  });
+
+  assert.equal(capture.dispatches.length, 1);
+  assert.equal(capture.dispatches[0]?.ctx.RawBody, "[引用:文本] 原始文本\n回复内容");
+  assert.equal(capture.dispatches[0]?.ctx.GeWeXml, xml);
+  assert.equal(capture.dispatches[0]?.ctx.GeWeAppMsgXml, xml);
+  assert.equal(capture.dispatches[0]?.ctx.GeWeAppMsgType, 57);
+  assert.equal(capture.dispatches[0]?.ctx.GeWeQuoteTitle, "回复内容");
+  assert.equal(capture.dispatches[0]?.ctx.GeWeQuoteType, 1);
+  assert.equal(capture.dispatches[0]?.ctx.GeWeQuoteSvrid, "3617029648443513152");
+  assert.equal(capture.dispatches[0]?.ctx.GeWeQuoteFromUsr, "wxid_phyyedw9xap22");
+  assert.equal(capture.dispatches[0]?.ctx.GeWeQuoteChatUsr, "wxid_phyyedw9xap22");
+  assert.equal(capture.dispatches[0]?.ctx.GeWeQuoteDisplayName, "朝夕。");
+  assert.equal(capture.dispatches[0]?.ctx.GeWeQuoteContent, "原始文本");
+  assert.equal(capture.dispatches[0]?.ctx.MsgType, 49);
+});
+
+test("GeWe 非文本引用不会把整段 xml 泄露进正文", async () => {
+  const capture = {
+    dispatches: [] as Array<{ ctx: Record<string, unknown>; replyOptions: Record<string, unknown> }>,
+  };
+  installRuntime(capture);
+  const xml = [
+    "<?xml version=\"1.0\"?>",
+    "<msg>",
+    "<appmsg appid=\"\" sdkver=\"0\">",
+    "<title>看看这个</title>",
+    "<type>57</type>",
+    "<refermsg>",
+    "<type>6</type>",
+    "<svrid>3617029648443513152</svrid>",
+    "<content>&lt;msg&gt;&lt;appmsg&gt;&lt;title&gt;hhh.xlsx&lt;/title&gt;&lt;type&gt;6&lt;/type&gt;&lt;/appmsg&gt;&lt;/msg&gt;</content>",
+    "</refermsg>",
+    "</appmsg>",
+    "</msg>",
+  ].join("");
+
+  await handleGeweInboundBatch({
+    messages: [createMessage({ xml })],
+    account: createAccount({ dmPolicy: "open" }),
+    config: {} as CoreConfig,
+    runtime: TEST_RUNTIME,
+    downloadQueue: new GeweDownloadQueue({ minDelayMs: 0, maxDelayMs: 0 }),
+  });
+
+  assert.equal(capture.dispatches.length, 1);
+  assert.equal(capture.dispatches[0]?.ctx.RawBody, "[引用:文件]\n看看这个");
+  assert.doesNotMatch(String(capture.dispatches[0]?.ctx.RawBody ?? ""), /<msg>|<appmsg>/);
+  assert.equal(
+    capture.dispatches[0]?.ctx.GeWeQuoteContent,
+    "<msg><appmsg><title>hhh.xlsx</title><type>6</type></appmsg></msg>",
+  );
+});

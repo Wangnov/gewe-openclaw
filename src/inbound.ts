@@ -30,7 +30,14 @@ import {
   resolveGeweRequireMention,
 } from "./policy.js";
 import type { CoreConfig, GeweInboundMessage, ResolvedGeweAccount } from "./types.js";
-import { extractAppMsgType, extractFileName, extractLinkDetails } from "./xml.js";
+import {
+  extractAppMsgType,
+  extractFileName,
+  extractLinkDetails,
+  extractQuoteDetails,
+  extractQuoteSummary,
+  type GeweQuoteDetails,
+} from "./xml.js";
 import { CHANNEL_ID } from "./constants.js";
 
 type PreparedInbound = {
@@ -39,6 +46,8 @@ type PreparedInbound = {
   rawXml?: string;
   appMsgXml?: string;
   appMsgType?: number;
+  quoteXml?: string;
+  quoteDetails?: GeweQuoteDetails;
   commandAuthorized: boolean;
   isGroup: boolean;
   senderId: string;
@@ -63,6 +72,8 @@ type NormalizedInboundEntry = {
   rawXml?: string;
   appMsgXml?: string;
   appMsgType?: number;
+  quoteXml?: string;
+  quoteDetails?: GeweQuoteDetails;
   download?: {
     msgType: number;
     xml: string;
@@ -331,6 +342,17 @@ function normalizeInboundEntry(params: {
 
   if (msgType === 49 && xml) {
     const appType = extractAppMsgType(xml);
+    if (appType === 57 || /<refermsg>/i.test(xml)) {
+      return {
+        message,
+        rawBody: extractQuoteSummary(xml)?.body || resolveAppMsgPlaceholder(appType),
+        rawXml: xml,
+        appMsgXml: xml,
+        appMsgType: appType,
+        quoteXml: xml,
+        quoteDetails: extractQuoteDetails(xml),
+      };
+    }
     if (appType === 5) {
       return {
         message,
@@ -368,6 +390,8 @@ function normalizeInboundEntry(params: {
     rawXml: xml,
     appMsgXml: msgType === 49 && xml ? xml : undefined,
     appMsgType: msgType === 49 && xml ? extractAppMsgType(xml) : undefined,
+    quoteXml: undefined,
+    quoteDetails: undefined,
     download:
       (msgType === 3 || msgType === 34 || msgType === 43 || msgType === 49) && xml
         ? { msgType, xml }
@@ -504,6 +528,23 @@ async function dispatchGeweInbound(params: {
     ...(prepared.appMsgXml ? { GeWeAppMsgXml: prepared.appMsgXml } : {}),
     ...(typeof prepared.appMsgType === "number"
       ? { GeWeAppMsgType: prepared.appMsgType }
+      : {}),
+    ...(prepared.quoteXml ? { GeWeQuoteXml: prepared.quoteXml } : {}),
+    ...(prepared.quoteDetails?.title ? { GeWeQuoteTitle: prepared.quoteDetails.title } : {}),
+    ...(typeof prepared.quoteDetails?.referType === "number"
+      ? { GeWeQuoteType: prepared.quoteDetails.referType }
+      : {}),
+    ...(prepared.quoteDetails?.svrid ? { GeWeQuoteSvrid: prepared.quoteDetails.svrid } : {}),
+    ...(prepared.quoteDetails?.fromUsr ? { GeWeQuoteFromUsr: prepared.quoteDetails.fromUsr } : {}),
+    ...(prepared.quoteDetails?.chatUsr ? { GeWeQuoteChatUsr: prepared.quoteDetails.chatUsr } : {}),
+    ...(prepared.quoteDetails?.displayName
+      ? { GeWeQuoteDisplayName: prepared.quoteDetails.displayName }
+      : {}),
+    ...(prepared.quoteDetails?.content
+      ? { GeWeQuoteContent: prepared.quoteDetails.content }
+      : {}),
+    ...(prepared.quoteDetails?.msgSource
+      ? { GeWeQuoteMsgSource: prepared.quoteDetails.msgSource }
       : {}),
     GroupSystemPrompt: prepared.groupSystemPrompt,
     OriginatingChannel: CHANNEL_ID,
@@ -777,6 +818,8 @@ export async function handleGeweInboundBatch(params: {
     rawXml: entries.at(-1)?.rawXml,
     appMsgXml: entries.at(-1)?.appMsgXml,
     appMsgType: entries.at(-1)?.appMsgType,
+    quoteXml: entries.at(-1)?.quoteXml,
+    quoteDetails: entries.at(-1)?.quoteDetails,
     commandAuthorized,
     isGroup,
     senderId,
