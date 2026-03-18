@@ -162,6 +162,14 @@ openclaw onboard
 
 另外，普通文本回复如果带有宿主 `replyToId`，插件会自动映射为 GeWe 的引用回复气泡；媒体、链接、小程序、撤回、转发等既有富消息分支不会被这条自动桥接抢占。
 
+如果希望让模型主动发“部分引用”，GeWe 通道会识别回复末尾的一行隐藏指令：
+
+```text
+[[GEWE_QUOTE_PARTIAL:要引用的原文片段]]
+```
+
+插件会在发送前剥离这行指令，并自动转成 `quoteReply.partialText`。通常配合宿主 `replyToId` 一起使用，用来引用当前正在回复的那条消息中的某一段文字。
+
 入站 `appmsg` 现在会尽量保留复用素材，并在上下文中附带：
 
 - `MsgType`：原始 GeWe `msgType`

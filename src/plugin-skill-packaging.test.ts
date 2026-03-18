@@ -30,4 +30,5 @@ test("gewe channel rules skill exists with expected core guidance", () => {
   assert.match(content, /回复避免长篇大论/);
   assert.match(content, /优先转成图片或文件发送/);
   assert.match(content, /纯文本短段落和简单序号/);
+  assert.match(content, /GEWE_QUOTE_PARTIAL/);
 });

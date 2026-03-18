@@ -53,11 +53,48 @@ type GeweSetupInput = ChannelSetupInput & {
   apiBaseUrl?: string;
 };
 
+const GEWE_QUOTE_PARTIAL_DIRECTIVE_RE = /(?:\r?\n)?\s*\[\[GEWE_QUOTE_PARTIAL:([\s\S]*?)\]\]\s*$/;
+
 function asRecord(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return null;
   }
   return value as Record<string, unknown>;
+}
+
+function withGeweScopedChannelData(
+  payload: ReplyPayload,
+  updater: (scoped: Record<string, unknown>) => Record<string, unknown>,
+): ReplyPayload {
+  const channelData = asRecord(payload.channelData) ?? {};
+  const existingChannelScoped = asRecord(channelData[CHANNEL_ID]);
+  const existingLegacyScoped = asRecord(channelData.gewe);
+  const targetKey = existingChannelScoped ? CHANNEL_ID : existingLegacyScoped ? "gewe" : CHANNEL_ID;
+  const scoped = existingChannelScoped ?? existingLegacyScoped ?? {};
+
+  return {
+    ...payload,
+    channelData: {
+      ...channelData,
+      [targetKey]: updater(scoped),
+    },
+  };
+}
+
+function parseGeweQuotePartialDirective(text: string | undefined): {
+  cleanedText: string;
+  partialText: string;
+} | null {
+  if (typeof text !== "string") return null;
+  const match = GEWE_QUOTE_PARTIAL_DIRECTIVE_RE.exec(text);
+  if (!match) return null;
+  const partialText = match[1]?.trim();
+  if (!partialText) return null;
+  const cleanedText = text.slice(0, match.index).replace(/\s+$/, "");
+  return {
+    cleanedText,
+    partialText,
+  };
 }
 
 function resolvePayloadMediaEntries(payload: ReplyPayload): string[] {
@@ -70,26 +107,41 @@ function resolvePayloadMediaEntries(payload: ReplyPayload): string[] {
 }
 
 function normalizeGeweOutboundPayload(payload: ReplyPayload): ReplyPayload {
-  if (payload.audioAsVoice !== true || resolvePayloadMediaEntries(payload).length !== 1) {
-    return payload;
+  let normalized = payload;
+
+  const partialDirective = parseGeweQuotePartialDirective(payload.text);
+  if (partialDirective) {
+    normalized = {
+      ...normalized,
+      text: partialDirective.cleanedText,
+    };
+    normalized = withGeweScopedChannelData(normalized, (scoped) => {
+      const quoteReply = asRecord(scoped.quoteReply);
+      const existingPartialText = asRecord(quoteReply?.partialText);
+      if (existingPartialText?.text) {
+        return scoped;
+      }
+      return {
+        ...scoped,
+        quoteReply: {
+          ...(quoteReply ?? {}),
+          partialText: {
+            ...existingPartialText,
+            text: partialDirective.partialText,
+          },
+        },
+      };
+    });
   }
 
-  const channelData = asRecord(payload.channelData) ?? {};
-  const existingChannelScoped = asRecord(channelData[CHANNEL_ID]);
-  const existingLegacyScoped = asRecord(channelData.gewe);
-  const targetKey = existingChannelScoped ? CHANNEL_ID : existingLegacyScoped ? "gewe" : CHANNEL_ID;
-  const scoped = existingChannelScoped ?? existingLegacyScoped ?? {};
+  if (normalized.audioAsVoice !== true || resolvePayloadMediaEntries(normalized).length !== 1) {
+    return normalized;
+  }
 
-  return {
-    ...payload,
-    channelData: {
-      ...channelData,
-      [targetKey]: {
-        ...scoped,
-        audioAsVoice: true,
-      },
-    },
-  };
+  return withGeweScopedChannelData(normalized, (scoped) => ({
+    ...scoped,
+    audioAsVoice: true,
+  }));
 }
 
 const gewePairing = {

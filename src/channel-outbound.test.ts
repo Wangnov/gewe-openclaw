@@ -40,3 +40,26 @@ test("GeWe outbound 不会为多媒体 audioAsVoice payload 强行改走 sendPay
 
   assert.equal(normalized, payload);
 });
+
+test("GeWe outbound 会把部分引用指令归一成 quoteReply.partialText 并剥离指令文本", () => {
+  const normalized = gewePlugin.outbound?.normalizePayload?.({
+    payload: {
+      text: "这是一条引用消息\n[[GEWE_QUOTE_PARTIAL:引用消息]]",
+      replyToId: "msg-123",
+    },
+  });
+
+  assert.deepEqual(normalized, {
+    text: "这是一条引用消息",
+    replyToId: "msg-123",
+    channelData: {
+      "gewe-openclaw": {
+        quoteReply: {
+          partialText: {
+            text: "引用消息",
+          },
+        },
+      },
+    },
+  });
+});

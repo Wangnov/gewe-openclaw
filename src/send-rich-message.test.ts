@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { gewePlugin } from "./channel.ts";
 import { setGeweRuntime } from "./runtime.ts";
 import type { ResolvedGeweAccount } from "./types.ts";
 
@@ -415,6 +416,54 @@ test("replyToId + text 会自动发送引用回复", async () => {
     assert.match(body.appmsg ?? "", /<type>57<\/type>/);
     assert.match(body.appmsg ?? "", /<svrid>208008054840614808<\/svrid>/);
     assert.match(body.appmsg ?? "", /<title>收到<\/title>/);
+  });
+});
+
+test("replyToId + GEWE_QUOTE_PARTIAL 指令会自动发送部分引用回复", async () => {
+  installRuntime();
+  const deliveryModule = (await import("./delivery.ts")) as {
+    deliverGewePayload?: (params: {
+      payload: {
+        text?: string;
+        channelData?: Record<string, unknown>;
+        replyToId?: string;
+        mediaUrl?: string;
+        mediaUrls?: string[];
+      };
+      account: ResolvedGeweAccount;
+      cfg: {};
+      toWxid: string;
+    }) => Promise<unknown>;
+  };
+
+  const normalized = gewePlugin.outbound?.normalizePayload?.({
+    payload: {
+      text: "这是一条引用消息\n[[GEWE_QUOTE_PARTIAL:引用消息]]",
+      replyToId: "208008054840614808",
+    },
+  });
+
+  await withMockFetch(async (calls) => {
+    await deliveryModule.deliverGewePayload?.({
+      payload: normalized ?? {},
+      account: createAccount(),
+      cfg: {},
+      toWxid: "wxid_target",
+    });
+
+    assert.equal(calls.length, 1);
+    assert.match(calls[0]?.url ?? "", /\/gewe\/v2\/api\/message\/postAppMsg$/);
+    const body = JSON.parse(String(calls[0]?.init?.body ?? "{}")) as {
+      appmsg?: string;
+    };
+    assert.match(body.appmsg ?? "", /<type>57<\/type>/);
+    assert.match(body.appmsg ?? "", /<svrid>208008054840614808<\/svrid>/);
+    assert.match(body.appmsg ?? "", /<title>这是一条引用消息<\/title>/);
+    assert.match(body.appmsg ?? "", /<partialtext>/);
+    assert.match(body.appmsg ?? "", /<start>引<\/start>/);
+    assert.match(body.appmsg ?? "", /<end>息<\/end>/);
+    assert.match(body.appmsg ?? "", /<quotemd5>ff26a8df0ac1762f830754c6cd7f2df7<\/quotemd5>/);
+    assert.doesNotMatch(body.appmsg ?? "", /\[\[GEWE_QUOTE_PARTIAL:/);
   });
 });
 
