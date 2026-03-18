@@ -34,6 +34,10 @@ import { CHANNEL_ID } from "./constants.js";
 
 type PreparedInbound = {
   rawBody: string;
+  messageType: number;
+  rawXml?: string;
+  appMsgXml?: string;
+  appMsgType?: number;
   commandAuthorized: boolean;
   isGroup: boolean;
   senderId: string;
@@ -55,6 +59,9 @@ type PreparedInbound = {
 type NormalizedInboundEntry = {
   message: GeweInboundMessage;
   rawBody: string;
+  rawXml?: string;
+  appMsgXml?: string;
+  appMsgType?: number;
   download?: {
     msgType: number;
     xml: string;
@@ -75,6 +82,10 @@ function resolveMediaPlaceholder(msgType: number): string {
   if (msgType === 43) return "<media:video>";
   if (msgType === 49) return "<media:document>";
   return "";
+}
+
+function resolveAppMsgPlaceholder(appType?: number): string {
+  return typeof appType === "number" ? `<appmsg:${appType}>` : "<appmsg>";
 }
 
 function resolveGewePairCodeCandidate(rawBody: string): string | null {
@@ -323,21 +334,39 @@ function normalizeInboundEntry(params: {
       return {
         message,
         rawBody: resolveLinkBody(xml) || rawBodyCandidate,
+        rawXml: xml,
+        appMsgXml: xml,
+        appMsgType: appType,
       };
     }
     if (appType === 74) {
-      runtime.log?.("gewe: file notification received (skip download)");
-      return null;
+      runtime.log?.("gewe: file notification received (preserve xml, skip download)");
+      return {
+        message,
+        rawBody: resolveAppMsgPlaceholder(appType),
+        rawXml: xml,
+        appMsgXml: xml,
+        appMsgType: appType,
+      };
     }
     if (appType !== 6) {
-      runtime.log?.(`gewe: unhandled appmsg type ${appType ?? "unknown"}`);
-      return null;
+      runtime.log?.(`gewe: preserve appmsg type ${appType ?? "unknown"} without download`);
+      return {
+        message,
+        rawBody: resolveAppMsgPlaceholder(appType),
+        rawXml: xml,
+        appMsgXml: xml,
+        appMsgType: appType,
+      };
     }
   }
 
   return {
     message,
     rawBody: rawBodyCandidate,
+    rawXml: xml,
+    appMsgXml: msgType === 49 && xml ? xml : undefined,
+    appMsgType: msgType === 49 && xml ? extractAppMsgType(xml) : undefined,
     download:
       (msgType === 3 || msgType === 34 || msgType === 43 || msgType === 49) && xml
         ? { msgType, xml }
@@ -468,7 +497,13 @@ async function dispatchGeweInbound(params: {
     MessageSids: prepared.messageSids,
     MessageSidFirst: prepared.messageSidFirst,
     MessageSidLast: prepared.messageSidLast,
+    MsgType: prepared.messageType,
     ...mediaPayload,
+    ...(prepared.rawXml ? { GeWeXml: prepared.rawXml } : {}),
+    ...(prepared.appMsgXml ? { GeWeAppMsgXml: prepared.appMsgXml } : {}),
+    ...(typeof prepared.appMsgType === "number"
+      ? { GeWeAppMsgType: prepared.appMsgType }
+      : {}),
     GroupSystemPrompt: prepared.groupSystemPrompt,
     OriginatingChannel: CHANNEL_ID,
     OriginatingTo: `${CHANNEL_ID}:${prepared.toWxid}`,
@@ -741,6 +776,10 @@ export async function handleGeweInboundBatch(params: {
 
   const prepared: PreparedInbound = {
     rawBody: rawBodyCandidate,
+    messageType: lastMessage.msgType,
+    rawXml: entries.at(-1)?.rawXml,
+    appMsgXml: entries.at(-1)?.appMsgXml,
+    appMsgType: entries.at(-1)?.appMsgType,
     commandAuthorized,
     isGroup,
     senderId,
