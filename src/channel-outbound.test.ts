@@ -28,3 +28,15 @@ test("GeWe outbound 会为 audioAsVoice 媒体补上 channelData 以保留语音
     },
   });
 });
+
+test("GeWe outbound 不会为多媒体 audioAsVoice payload 强行改走 sendPayload", () => {
+  const payload = {
+    text: "caption",
+    mediaUrls: ["/tmp/voice.wav", "/tmp/extra.png"],
+    audioAsVoice: true,
+  };
+
+  const normalized = gewePlugin.outbound?.normalizePayload?.({ payload });
+
+  assert.equal(normalized, payload);
+});

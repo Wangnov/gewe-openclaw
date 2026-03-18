@@ -60,13 +60,17 @@ function asRecord(value: unknown): Record<string, unknown> | null {
   return value as Record<string, unknown>;
 }
 
-function payloadHasMedia(payload: ReplyPayload): boolean {
-  if (payload.mediaUrl?.trim()) return true;
-  return Boolean(payload.mediaUrls?.some((entry) => entry?.trim()));
+function resolvePayloadMediaEntries(payload: ReplyPayload): string[] {
+  const mediaUrls = payload.mediaUrls?.map((entry) => entry?.trim()).filter(Boolean);
+  if (mediaUrls?.length) {
+    return mediaUrls;
+  }
+  const mediaUrl = payload.mediaUrl?.trim();
+  return mediaUrl ? [mediaUrl] : [];
 }
 
 function normalizeGeweOutboundPayload(payload: ReplyPayload): ReplyPayload {
-  if (payload.audioAsVoice !== true || !payloadHasMedia(payload)) {
+  if (payload.audioAsVoice !== true || resolvePayloadMediaEntries(payload).length !== 1) {
     return payload;
   }
 
