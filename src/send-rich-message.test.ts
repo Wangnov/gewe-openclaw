@@ -228,6 +228,94 @@ test("deliverGewePayload 在 appMsg 存在时会优先发送 GeWe 富消息", as
   });
 });
 
+test("deliverGewePayload 会发送显式 quoteReply", async () => {
+  installRuntime();
+  const deliveryModule = (await import("./delivery.ts")) as {
+    deliverGewePayload?: (params: {
+      payload: {
+        text?: string;
+        channelData?: Record<string, unknown>;
+        replyToId?: string;
+      };
+      account: ResolvedGeweAccount;
+      cfg: {};
+      toWxid: string;
+    }) => Promise<unknown>;
+  };
+
+  await withMockFetch(async (calls) => {
+    await deliveryModule.deliverGewePayload?.({
+      payload: {
+        text: "这段纯文本不应直接发送",
+        channelData: {
+          "gewe-openclaw": {
+            quoteReply: {
+              svrid: "208008054840614808",
+              title: "这条是引用回复",
+            },
+          },
+        },
+      },
+      account: createAccount(),
+      cfg: {},
+      toWxid: "wxid_target",
+    });
+
+    assert.equal(calls.length, 1);
+    assert.match(calls[0]?.url ?? "", /\/gewe\/v2\/api\/message\/postAppMsg$/);
+    const body = JSON.parse(String(calls[0]?.init?.body ?? "{}")) as {
+      appmsg?: string;
+    };
+    assert.match(body.appmsg ?? "", /<type>57<\/type>/);
+    assert.match(body.appmsg ?? "", /<svrid>208008054840614808<\/svrid>/);
+    assert.match(body.appmsg ?? "", /<title>这条是引用回复<\/title>/);
+  });
+});
+
+test("quoteReply.atWxid 会生成 refermsg.msgsource atuserlist", async () => {
+  installRuntime();
+  const deliveryModule = (await import("./delivery.ts")) as {
+    deliverGewePayload?: (params: {
+      payload: {
+        text?: string;
+        channelData?: Record<string, unknown>;
+        replyToId?: string;
+      };
+      account: ResolvedGeweAccount;
+      cfg: {};
+      toWxid: string;
+    }) => Promise<unknown>;
+  };
+
+  await withMockFetch(async (calls) => {
+    await deliveryModule.deliverGewePayload?.({
+      payload: {
+        channelData: {
+          "gewe-openclaw": {
+            quoteReply: {
+              svrid: "208008054840614808",
+              title: "群里引用回复",
+              atWxid: "wxid_member_1",
+            },
+          },
+        },
+      },
+      account: createAccount(),
+      cfg: {},
+      toWxid: "room@chatroom",
+    });
+
+    assert.equal(calls.length, 1);
+    const body = JSON.parse(String(calls[0]?.init?.body ?? "{}")) as {
+      appmsg?: string;
+    };
+    assert.match(
+      body.appmsg ?? "",
+      /&lt;msgsource&gt;&lt;atuserlist&gt;wxid_member_1&lt;\/atuserlist&gt;&lt;\/msgsource&gt;/,
+    );
+  });
+});
+
 test("sendEmojiGewe 会向 GeWe postEmoji 发送 emoji 元数据", async () => {
   installRuntime();
   const sendModule = (await import("./send.ts")) as {

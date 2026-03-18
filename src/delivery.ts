@@ -39,6 +39,11 @@ type GeweChannelData = {
   appMsg?: {
     appmsg: string;
   };
+  quoteReply?: {
+    svrid?: string | number;
+    title?: string;
+    atWxid?: string;
+  };
   emoji?: {
     emojiMd5: string;
     emojiSize: number;
@@ -712,6 +717,29 @@ function normalizeMediaToken(raw: string): string {
   return value;
 }
 
+function escapeXmlText(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function buildQuoteReplyAppMsg(params: {
+  title: string;
+  svrid: string;
+  atWxid?: string;
+}): string {
+  const safeTitle = escapeXmlText(params.title.trim() || "引用回复");
+  const safeSvrid = escapeXmlText(params.svrid.trim());
+  const safeAtWxid = params.atWxid?.trim() ? escapeXmlText(params.atWxid.trim()) : undefined;
+  const encodedMsgSource = safeAtWxid
+    ? `&lt;msgsource&gt;&lt;atuserlist&gt;${safeAtWxid}&lt;/atuserlist&gt;&lt;/msgsource&gt;`
+    : "";
+  return `<appmsg><title>${safeTitle}</title><type>57</type><refermsg><svrid>${safeSvrid}</svrid>${safeAtWxid ? `<msgsource>${encodedMsgSource}</msgsource>` : ""}</refermsg></appmsg>`;
+}
+
 async function stageMedia(params: {
   account: ResolvedGeweAccount;
   cfg: OpenClawConfig;
@@ -881,6 +909,30 @@ export async function deliverGewePayload(params: {
       account,
       toWxid,
       appmsg: geweData.appMsg.appmsg.trim(),
+    });
+    core.channel.activity.record({
+      channel: CHANNEL_ID,
+      accountId: account.accountId,
+      direction: "outbound",
+    });
+    statusSink?.({ lastOutboundAt: Date.now() });
+    return result;
+  }
+
+  const quoteReplySvrid =
+    geweData?.quoteReply?.svrid != null
+      ? String(geweData.quoteReply.svrid).trim()
+      : payload.replyToId?.trim() || "";
+  const quoteReplyTitle = geweData?.quoteReply?.title?.trim() || trimmedText;
+  if (quoteReplySvrid && quoteReplyTitle && geweData?.quoteReply) {
+    const result = await sendAppMsgGewe({
+      account,
+      toWxid,
+      appmsg: buildQuoteReplyAppMsg({
+        svrid: quoteReplySvrid,
+        title: quoteReplyTitle,
+        atWxid: geweData.quoteReply.atWxid?.trim(),
+      }),
     });
     core.channel.activity.record({
       channel: CHANNEL_ID,
