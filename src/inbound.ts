@@ -20,6 +20,7 @@ import { deliverGewePayload } from "./delivery.js";
 import { resolveGeweReplyOptions } from "./reply-options.js";
 import { getGeweRuntime } from "./runtime.js";
 import { ensureRustSilkBinary } from "./silk.js";
+import { readGeweAllowFromStore, redeemGewePairCode } from "./pairing-store.js";
 import {
   normalizeGeweAllowlist,
   resolveGeweAllowlistMatch,
@@ -604,12 +605,14 @@ export async function handleGeweInboundBatch(params: {
 
   const configAllowFrom = normalizeGeweAllowlist(account.config.allowFrom);
   const configGroupAllowFrom = normalizeGeweAllowlist(account.config.groupAllowFrom);
-  const storeAllowFrom = await core.channel.pairing
-    .readAllowFromStore({
-      channel: CHANNEL_ID,
-      accountId: account.accountId,
-    })
-    .catch(() => []);
+  const storeAllowFrom = await readGeweAllowFromStore({
+    accountId: account.accountId,
+  }).catch((err) => {
+    runtime.error?.(
+      `gewe: failed reading local allowFrom store for ${account.accountId}: ${String(err)}`,
+    );
+    return [];
+  });
   const storeAllowList = normalizeGeweAllowlist(storeAllowFrom);
 
   const groupMatch = isGroup
@@ -692,19 +695,13 @@ export async function handleGeweInboundBatch(params: {
         if (dmPolicy === "pairing") {
           const pairCode = resolveGewePairCodeCandidate(rawBodyCandidate);
           if (pairCode) {
-            const pairingRuntime = core.channel.pairing as typeof core.channel.pairing & {
-              redeemPairCode?: (params: {
-                channel: string;
-                accountId: string;
-                code: string;
-                id: string;
-              }) => Promise<{ id: string; code: string } | null>;
-            };
-            const redeemed = await pairingRuntime.redeemPairCode?.({
-              channel: CHANNEL_ID,
+            const redeemed = await redeemGewePairCode({
               accountId: account.accountId,
               code: pairCode,
               id: senderId,
+            }).catch((err) => {
+              runtime.error?.(`gewe: pair code redeem failed for ${senderId}: ${String(err)}`);
+              return null;
             });
             try {
               await deliverGewePayload({
