@@ -20,6 +20,7 @@ import {
   sendFileGewe,
   sendImageGewe,
   sendLinkGewe,
+  sendMiniAppGewe,
   sendNameCardGewe,
   sendTextGewe,
   sendVideoGewe,
@@ -39,6 +40,14 @@ type GeweChannelData = {
   nameCard?: {
     nickName: string;
     nameCardWxid: string;
+  };
+  miniApp?: {
+    miniAppId: string;
+    displayName: string;
+    pagePath: string;
+    coverImgUrl: string;
+    title: string;
+    userName: string;
   };
   link?: {
     title: string;
@@ -888,6 +897,33 @@ export async function deliverGewePayload(params: {
       toWxid,
       nickName: geweData.nameCard.nickName.trim(),
       nameCardWxid: geweData.nameCard.nameCardWxid.trim(),
+    });
+    core.channel.activity.record({
+      channel: CHANNEL_ID,
+      accountId: account.accountId,
+      direction: "outbound",
+    });
+    statusSink?.({ lastOutboundAt: Date.now() });
+    return result;
+  }
+
+  if (
+    geweData?.miniApp?.miniAppId?.trim() &&
+    geweData.miniApp.displayName?.trim() &&
+    geweData.miniApp.pagePath?.trim() &&
+    geweData.miniApp.coverImgUrl?.trim() &&
+    geweData.miniApp.title?.trim() &&
+    geweData.miniApp.userName?.trim()
+  ) {
+    const result = await sendMiniAppGewe({
+      account,
+      toWxid,
+      miniAppId: geweData.miniApp.miniAppId.trim(),
+      displayName: geweData.miniApp.displayName.trim(),
+      pagePath: geweData.miniApp.pagePath.trim(),
+      coverImgUrl: geweData.miniApp.coverImgUrl.trim(),
+      title: geweData.miniApp.title.trim(),
+      userName: geweData.miniApp.userName.trim(),
     });
     core.channel.activity.record({
       channel: CHANNEL_ID,

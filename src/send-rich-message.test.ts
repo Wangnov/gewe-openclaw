@@ -285,3 +285,89 @@ test("deliverGewePayload 在 nameCard 存在时会优先发送 GeWe 名片", asy
     assert.match(calls[0]?.url ?? "", /\/gewe\/v2\/api\/message\/postNameCard$/);
   });
 });
+
+test("sendMiniAppGewe 会向 GeWe postMiniApp 发送小程序元数据", async () => {
+  installRuntime();
+  const sendModule = (await import("./send.ts")) as {
+    sendMiniAppGewe?: (params: {
+      account: ResolvedGeweAccount;
+      toWxid: string;
+      miniAppId: string;
+      displayName: string;
+      pagePath: string;
+      coverImgUrl: string;
+      title: string;
+      userName: string;
+    }) => Promise<unknown>;
+  };
+
+  assert.equal(typeof sendModule.sendMiniAppGewe, "function");
+
+  await withMockFetch(async (calls) => {
+    await sendModule.sendMiniAppGewe?.({
+      account: createAccount(),
+      toWxid: "wxid_target",
+      miniAppId: "wx1234567890",
+      displayName: "百果园+",
+      pagePath: "pages/homeDelivery/index.html",
+      coverImgUrl: "https://example.com/cover.jpg",
+      title: "最快29分钟 好吃水果送到家",
+      userName: "gh_690acf47ea05@app",
+    });
+
+    assert.equal(calls.length, 1);
+    assert.match(calls[0]?.url ?? "", /\/gewe\/v2\/api\/message\/postMiniApp$/);
+    const body = JSON.parse(String(calls[0]?.init?.body ?? "{}")) as Record<string, unknown>;
+    assert.deepEqual(body, {
+      appId: "app-rich",
+      toWxid: "wxid_target",
+      miniAppId: "wx1234567890",
+      displayName: "百果园+",
+      pagePath: "pages/homeDelivery/index.html",
+      coverImgUrl: "https://example.com/cover.jpg",
+      title: "最快29分钟 好吃水果送到家",
+      userName: "gh_690acf47ea05@app",
+    });
+  });
+});
+
+test("deliverGewePayload 在 miniApp 存在时会优先发送 GeWe 小程序", async () => {
+  installRuntime();
+  const deliveryModule = (await import("./delivery.ts")) as {
+    deliverGewePayload?: (params: {
+      payload: {
+        text?: string;
+        channelData?: Record<string, unknown>;
+      };
+      account: ResolvedGeweAccount;
+      cfg: {};
+      toWxid: string;
+    }) => Promise<unknown>;
+  };
+
+  await withMockFetch(async (calls) => {
+    await deliveryModule.deliverGewePayload?.({
+      payload: {
+        text: "这段纯文本不应抢占 miniApp",
+        channelData: {
+          "gewe-openclaw": {
+            miniApp: {
+              miniAppId: "wx1234567890",
+              displayName: "百果园+",
+              pagePath: "pages/homeDelivery/index.html",
+              coverImgUrl: "https://example.com/cover.jpg",
+              title: "最快29分钟 好吃水果送到家",
+              userName: "gh_690acf47ea05@app",
+            },
+          },
+        },
+      },
+      account: createAccount(),
+      cfg: {},
+      toWxid: "wxid_target",
+    });
+
+    assert.equal(calls.length, 1);
+    assert.match(calls[0]?.url ?? "", /\/gewe\/v2\/api\/message\/postMiniApp$/);
+  });
+});
