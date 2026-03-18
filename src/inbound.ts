@@ -543,6 +543,24 @@ async function dispatchGeweInbound(params: {
     ...(prepared.quoteDetails?.content
       ? { GeWeQuoteContent: prepared.quoteDetails.content }
       : {}),
+    ...(prepared.quoteDetails?.partialText?.start
+      ? { GeWeQuotePartialStart: prepared.quoteDetails.partialText.start }
+      : {}),
+    ...(prepared.quoteDetails?.partialText?.end
+      ? { GeWeQuotePartialEnd: prepared.quoteDetails.partialText.end }
+      : {}),
+    ...(typeof prepared.quoteDetails?.partialText?.startIndex === "number"
+      ? { GeWeQuotePartialStartIndex: prepared.quoteDetails.partialText.startIndex }
+      : {}),
+    ...(typeof prepared.quoteDetails?.partialText?.endIndex === "number"
+      ? { GeWeQuotePartialEndIndex: prepared.quoteDetails.partialText.endIndex }
+      : {}),
+    ...(prepared.quoteDetails?.partialText?.quoteMd5
+      ? { GeWeQuotePartialQuoteMd5: prepared.quoteDetails.partialText.quoteMd5 }
+      : {}),
+    ...(prepared.quoteDetails?.partialText?.text
+      ? { GeWeQuotePartialText: prepared.quoteDetails.partialText.text }
+      : {}),
     ...(prepared.quoteDetails?.msgSource
       ? { GeWeQuoteMsgSource: prepared.quoteDetails.msgSource }
       : {}),

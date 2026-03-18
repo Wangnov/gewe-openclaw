@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import crypto from "node:crypto";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -43,6 +44,14 @@ type GeweChannelData = {
     svrid?: string | number;
     title?: string;
     atWxid?: string;
+    partialText?: {
+      text?: string;
+      start?: string;
+      end?: string;
+      startIndex?: string | number;
+      endIndex?: string | number;
+      quoteMd5?: string;
+    };
   };
   emoji?: {
     emojiMd5: string;
@@ -726,10 +735,49 @@ function escapeXmlText(value: string): string {
     .replace(/'/g, "&#39;");
 }
 
+function md5Hex(value: string): string {
+  return crypto.createHash("md5").update(value, "utf8").digest("hex");
+}
+
+function buildPartialQuoteXml(params?: {
+  text?: string;
+  start?: string;
+  end?: string;
+  startIndex?: string | number;
+  endIndex?: string | number;
+  quoteMd5?: string;
+}): string {
+  if (!params) return "";
+  const text = params.text?.trim();
+  const start = (params.start?.trim() || text?.slice(0, 1) || "").trim();
+  const end = (params.end?.trim() || text?.slice(-1) || "").trim();
+  const quoteMd5 = (params.quoteMd5?.trim() || (text ? md5Hex(text) : "")).toLowerCase();
+  if (!start || !end || !quoteMd5) return "";
+
+  const startIndex =
+    params.startIndex != null && String(params.startIndex).trim()
+      ? String(params.startIndex).trim()
+      : "0";
+  const endIndex =
+    params.endIndex != null && String(params.endIndex).trim()
+      ? String(params.endIndex).trim()
+      : "0";
+
+  return `<partialtext><start>${escapeXmlText(start)}</start><end>${escapeXmlText(end)}</end><startindex>${escapeXmlText(startIndex)}</startindex><endindex>${escapeXmlText(endIndex)}</endindex><quotemd5>${escapeXmlText(quoteMd5)}</quotemd5></partialtext>`;
+}
+
 function buildQuoteReplyAppMsg(params: {
   title: string;
   svrid: string;
   atWxid?: string;
+  partialText?: {
+    text?: string;
+    start?: string;
+    end?: string;
+    startIndex?: string | number;
+    endIndex?: string | number;
+    quoteMd5?: string;
+  };
 }): string {
   const safeTitle = escapeXmlText(params.title.trim() || "引用回复");
   const safeSvrid = escapeXmlText(params.svrid.trim());
@@ -737,7 +785,8 @@ function buildQuoteReplyAppMsg(params: {
   const encodedMsgSource = safeAtWxid
     ? `&lt;msgsource&gt;&lt;atuserlist&gt;${safeAtWxid}&lt;/atuserlist&gt;&lt;/msgsource&gt;`
     : "";
-  return `<appmsg><title>${safeTitle}</title><type>57</type><refermsg><svrid>${safeSvrid}</svrid>${safeAtWxid ? `<msgsource>${encodedMsgSource}</msgsource>` : ""}</refermsg></appmsg>`;
+  const partialTextXml = buildPartialQuoteXml(params.partialText);
+  return `<appmsg><title>${safeTitle}</title><type>57</type><refermsg>${partialTextXml}<svrid>${safeSvrid}</svrid>${safeAtWxid ? `<msgsource>${encodedMsgSource}</msgsource>` : ""}</refermsg></appmsg>`;
 }
 
 async function stageMedia(params: {
@@ -932,6 +981,7 @@ export async function deliverGewePayload(params: {
         svrid: quoteReplySvrid,
         title: quoteReplyTitle,
         atWxid: geweData.quoteReply.atWxid?.trim(),
+        partialText: geweData.quoteReply.partialText,
       }),
     });
     core.channel.activity.record({

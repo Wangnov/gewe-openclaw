@@ -1,3 +1,5 @@
+import crypto from "node:crypto";
+
 function decodeEntities(value: string): string {
   return value
     .replace(/&amp;/g, "&")
@@ -32,6 +34,16 @@ export type GeweQuoteDetails = {
   displayName?: string;
   content?: string;
   msgSource?: string;
+  partialText?: GeweQuotePartialText;
+};
+
+export type GeweQuotePartialText = {
+  start?: string;
+  end?: string;
+  startIndex?: number;
+  endIndex?: number;
+  quoteMd5?: string;
+  text?: string;
 };
 
 function parseOptionalNumber(value?: string): number | undefined {
@@ -61,6 +73,43 @@ function looksLikeXmlFragment(value?: string): boolean {
   const trimmed = value?.trim();
   if (!trimmed) return false;
   return trimmed.startsWith("<") && trimmed.endsWith(">");
+}
+
+function md5Hex(value: string): string {
+  return crypto.createHash("md5").update(value, "utf8").digest("hex");
+}
+
+function resolvePartialQuoteText(params: {
+  content?: string;
+  partialText?: GeweQuotePartialText;
+}): string | undefined {
+  const content = params.content?.trim();
+  const partialText = params.partialText;
+  if (!content || !partialText) return undefined;
+  if (looksLikeXmlFragment(content) || /<img[\s>]/i.test(content)) return undefined;
+
+  const start = partialText.start?.trim();
+  const end = partialText.end?.trim();
+  const quoteMd5 = partialText.quoteMd5?.trim().toLowerCase();
+  const rawText = partialText.text?.trim();
+  if (rawText && (!quoteMd5 || md5Hex(rawText) === quoteMd5)) {
+    return rawText;
+  }
+  if (!start || !end) return undefined;
+
+  const step = Math.max(start.length, 1);
+  for (let startPos = content.indexOf(start); startPos >= 0; startPos = content.indexOf(start, startPos + step)) {
+    const endStep = Math.max(end.length, 1);
+    for (let endPos = content.indexOf(end, startPos); endPos >= 0; endPos = content.indexOf(end, endPos + endStep)) {
+      const candidate = content.slice(startPos, endPos + end.length);
+      if (!candidate) continue;
+      if (!quoteMd5 || md5Hex(candidate) === quoteMd5) {
+        return candidate;
+      }
+    }
+  }
+
+  return undefined;
 }
 
 export function extractXmlTag(xml: string, tag: string): string | undefined {
@@ -102,6 +151,16 @@ export function extractQuoteDetails(xml: string): GeweQuoteDetails | undefined {
   if (!/<refermsg>/i.test(xml)) return undefined;
   const referXml = extractXmlTag(xml, "refermsg");
   if (!referXml) return undefined;
+  const partialTextXml = extractXmlTag(referXml, "partialtext");
+  const partialText = partialTextXml
+    ? ({
+        start: extractXmlTag(partialTextXml, "start"),
+        end: extractXmlTag(partialTextXml, "end"),
+        startIndex: parseOptionalNumber(extractXmlTag(partialTextXml, "startindex")),
+        endIndex: parseOptionalNumber(extractXmlTag(partialTextXml, "endindex")),
+        quoteMd5: extractXmlTag(partialTextXml, "quotemd5")?.toLowerCase(),
+      } as GeweQuotePartialText)
+    : undefined;
   const details = {
     title: extractXmlTag(xml, "title"),
     referType: parseOptionalNumber(extractXmlTag(referXml, "type")),
@@ -111,6 +170,17 @@ export function extractQuoteDetails(xml: string): GeweQuoteDetails | undefined {
     displayName: extractXmlTag(referXml, "displayname"),
     content: extractXmlTag(referXml, "content"),
     msgSource: extractXmlTag(referXml, "msgsource"),
+    partialText:
+      partialText &&
+      Object.fromEntries(
+        Object.entries({
+          ...partialText,
+          text: resolvePartialQuoteText({
+            content: extractXmlTag(referXml, "content"),
+            partialText,
+          }),
+        }).filter(([, value]) => value !== undefined),
+      ),
   };
   return Object.fromEntries(
     Object.entries(details).filter(([, value]) => value !== undefined),
@@ -127,11 +197,13 @@ export function extractQuoteSummary(xml: string):
   if (!details) return undefined;
   const quoteLabel = mapQuoteTypeLabel(details.referType);
   const parts = [];
+  const partialReferContent = details.partialText?.text?.trim();
   const referContent = details.content?.trim();
   const safeReferContent =
-    referContent && !looksLikeXmlFragment(referContent) && !/<img[\s>]/i.test(referContent)
+    partialReferContent ||
+    (referContent && !looksLikeXmlFragment(referContent) && !/<img[\s>]/i.test(referContent)
       ? referContent
-      : undefined;
+      : undefined);
   parts.push(
     safeReferContent ? `[引用:${quoteLabel}] ${safeReferContent}` : `[引用:${quoteLabel}]`,
   );

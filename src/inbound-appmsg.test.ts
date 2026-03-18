@@ -228,3 +228,54 @@ test("GeWe 非文本引用不会把整段 xml 泄露进正文", async () => {
     "<msg><appmsg><title>hhh.xlsx</title><type>6</type></appmsg></msg>",
   );
 });
+
+test("GeWe 部分引用会透传片段元数据并优先展示片段正文", async () => {
+  const capture = {
+    dispatches: [] as Array<{ ctx: Record<string, unknown>; replyOptions: Record<string, unknown> }>,
+  };
+  installRuntime(capture);
+  const xml = [
+    "<?xml version=\"1.0\"?>",
+    "<msg>",
+    "<appmsg appid=\"\" sdkver=\"0\">",
+    "<title>本消息为引用消息</title>",
+    "<type>57</type>",
+    "<refermsg>",
+    "<partialtext>",
+    "<start><![CDATA[你]]></start>",
+    "<end><![CDATA[啊]]></end>",
+    "<startindex>0</startindex>",
+    "<endindex>0</endindex>",
+    "<quotemd5>124756ef340daf80196b4124686d651c</quotemd5>",
+    "</partialtext>",
+    "<type>1</type>",
+    "<svrid>3464478223924169609</svrid>",
+    "<fromusr>wxid_mly499mvz23o21</fromusr>",
+    "<chatusr>wxid_mly499mvz23o21</chatusr>",
+    "<displayname>CLAsh</displayname>",
+    "<content>我这是一句完整的话，但我只需要引用你好啊三个字</content>",
+    "</refermsg>",
+    "</appmsg>",
+    "</msg>",
+  ].join("");
+
+  await handleGeweInboundBatch({
+    messages: [createMessage({ xml })],
+    account: createAccount({ dmPolicy: "open" }),
+    config: {} as CoreConfig,
+    runtime: TEST_RUNTIME,
+    downloadQueue: new GeweDownloadQueue({ minDelayMs: 0, maxDelayMs: 0 }),
+  });
+
+  assert.equal(capture.dispatches.length, 1);
+  assert.equal(capture.dispatches[0]?.ctx.RawBody, "[引用:文本] 你好啊\n本消息为引用消息");
+  assert.equal(capture.dispatches[0]?.ctx.GeWeQuotePartialStart, "你");
+  assert.equal(capture.dispatches[0]?.ctx.GeWeQuotePartialEnd, "啊");
+  assert.equal(capture.dispatches[0]?.ctx.GeWeQuotePartialStartIndex, 0);
+  assert.equal(capture.dispatches[0]?.ctx.GeWeQuotePartialEndIndex, 0);
+  assert.equal(
+    capture.dispatches[0]?.ctx.GeWeQuotePartialQuoteMd5,
+    "124756ef340daf80196b4124686d651c",
+  );
+  assert.equal(capture.dispatches[0]?.ctx.GeWeQuotePartialText, "你好啊");
+});

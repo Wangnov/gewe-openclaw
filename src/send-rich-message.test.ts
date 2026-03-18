@@ -329,6 +329,56 @@ test("quoteReply.atWxid 会生成 refermsg.msgsource atuserlist", async () => {
   });
 });
 
+test("quoteReply.partialText 会生成 refermsg.partialtext", async () => {
+  installRuntime();
+  const deliveryModule = (await import("./delivery.ts")) as {
+    deliverGewePayload?: (params: {
+      payload: {
+        text?: string;
+        channelData?: Record<string, unknown>;
+        replyToId?: string;
+      };
+      account: ResolvedGeweAccount;
+      cfg: {};
+      toWxid: string;
+    }) => Promise<unknown>;
+  };
+
+  await withMockFetch(async (calls) => {
+    await deliveryModule.deliverGewePayload?.({
+      payload: {
+        channelData: {
+          "gewe-openclaw": {
+            quoteReply: {
+              svrid: "3464478223924169609",
+              title: "本消息为引用消息",
+              partialText: {
+                text: "你好啊",
+                start: "你",
+                end: "啊",
+              },
+            },
+          },
+        },
+      },
+      account: createAccount(),
+      cfg: {},
+      toWxid: "wxid_target",
+    });
+
+    assert.equal(calls.length, 1);
+    const body = JSON.parse(String(calls[0]?.init?.body ?? "{}")) as {
+      appmsg?: string;
+    };
+    assert.match(body.appmsg ?? "", /<partialtext>/);
+    assert.match(body.appmsg ?? "", /<start>你<\/start>/);
+    assert.match(body.appmsg ?? "", /<end>啊<\/end>/);
+    assert.match(body.appmsg ?? "", /<startindex>0<\/startindex>/);
+    assert.match(body.appmsg ?? "", /<endindex>0<\/endindex>/);
+    assert.match(body.appmsg ?? "", /<quotemd5>124756ef340daf80196b4124686d651c<\/quotemd5>/);
+  });
+});
+
 test("replyToId + text 会自动发送引用回复", async () => {
   installRuntime();
   const deliveryModule = (await import("./delivery.ts")) as {
