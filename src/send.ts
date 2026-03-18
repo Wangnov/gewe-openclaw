@@ -32,6 +32,30 @@ function resolveSendResult(params: {
   };
 }
 
+async function sendXmlForwardGewe(params: {
+  account: ResolvedGeweAccount;
+  path: string;
+  context: string;
+  toWxid: string;
+  xml: string;
+  extraBody?: Record<string, unknown>;
+}): Promise<GeweSendResult> {
+  const ctx = buildContext(params.account);
+  const resp = await postGeweJson<GeweSendResponseData>({
+    baseUrl: ctx.baseUrl,
+    token: ctx.token,
+    path: params.path,
+    body: {
+      appId: ctx.appId,
+      toWxid: params.toWxid,
+      xml: params.xml,
+      ...(params.extraBody ?? {}),
+    },
+  });
+  const data = assertGeweOk(resp, params.context);
+  return resolveSendResult({ toWxid: params.toWxid, data });
+}
+
 export async function sendTextGewe(params: {
   account: ResolvedGeweAccount;
   toWxid: string;
@@ -289,4 +313,78 @@ export async function revokeMessageGewe(params: {
     newMessageId: params.newMsgId,
     timestamp: Number.parseInt(params.createTime, 10) * 1000 || undefined,
   };
+}
+
+export async function forwardImageGewe(params: {
+  account: ResolvedGeweAccount;
+  toWxid: string;
+  xml: string;
+}): Promise<GeweSendResult> {
+  return await sendXmlForwardGewe({
+    account: params.account,
+    path: "/gewe/v2/api/message/forwardImage",
+    context: "forwardImage",
+    toWxid: params.toWxid,
+    xml: params.xml,
+  });
+}
+
+export async function forwardVideoGewe(params: {
+  account: ResolvedGeweAccount;
+  toWxid: string;
+  xml: string;
+}): Promise<GeweSendResult> {
+  return await sendXmlForwardGewe({
+    account: params.account,
+    path: "/gewe/v2/api/message/forwardVideo",
+    context: "forwardVideo",
+    toWxid: params.toWxid,
+    xml: params.xml,
+  });
+}
+
+export async function forwardFileGewe(params: {
+  account: ResolvedGeweAccount;
+  toWxid: string;
+  xml: string;
+}): Promise<GeweSendResult> {
+  return await sendXmlForwardGewe({
+    account: params.account,
+    path: "/gewe/v2/api/message/forwardFile",
+    context: "forwardFile",
+    toWxid: params.toWxid,
+    xml: params.xml,
+  });
+}
+
+export async function forwardLinkGewe(params: {
+  account: ResolvedGeweAccount;
+  toWxid: string;
+  xml: string;
+}): Promise<GeweSendResult> {
+  return await sendXmlForwardGewe({
+    account: params.account,
+    path: "/gewe/v2/api/message/forwardUrl",
+    context: "forwardUrl",
+    toWxid: params.toWxid,
+    xml: params.xml,
+  });
+}
+
+export async function forwardMiniAppGewe(params: {
+  account: ResolvedGeweAccount;
+  toWxid: string;
+  xml: string;
+  coverImgUrl: string;
+}): Promise<GeweSendResult> {
+  return await sendXmlForwardGewe({
+    account: params.account,
+    path: "/gewe/v2/api/message/forwardMiniApp",
+    context: "forwardMiniApp",
+    toWxid: params.toWxid,
+    xml: params.xml,
+    extraBody: {
+      coverImgUrl: params.coverImgUrl,
+    },
+  });
 }

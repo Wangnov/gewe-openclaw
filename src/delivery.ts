@@ -15,6 +15,11 @@ import { getGeweRuntime } from "./runtime.js";
 import { resolveS3Config, uploadToS3 } from "./s3.js";
 import { buildRustSilkEncodeArgs, ensureRustSilkBinary } from "./silk.js";
 import {
+  forwardFileGewe,
+  forwardImageGewe,
+  forwardLinkGewe,
+  forwardMiniAppGewe,
+  forwardVideoGewe,
   sendAppMsgGewe,
   sendEmojiGewe,
   sendFileGewe,
@@ -54,6 +59,11 @@ type GeweChannelData = {
     msgId: string | number;
     newMsgId: string | number;
     createTime: string | number;
+  };
+  forward?: {
+    kind: "image" | "video" | "file" | "link" | "miniApp";
+    xml: string;
+    coverImgUrl?: string;
   };
   link?: {
     title: string;
@@ -959,6 +969,60 @@ export async function deliverGewePayload(params: {
     });
     statusSink?.({ lastOutboundAt: Date.now() });
     return result;
+  }
+
+  if (geweData?.forward?.kind && geweData.forward.xml?.trim()) {
+    let result: GeweSendResult | null = null;
+    switch (geweData.forward.kind) {
+      case "image":
+        result = await forwardImageGewe({
+          account,
+          toWxid,
+          xml: geweData.forward.xml.trim(),
+        });
+        break;
+      case "video":
+        result = await forwardVideoGewe({
+          account,
+          toWxid,
+          xml: geweData.forward.xml.trim(),
+        });
+        break;
+      case "file":
+        result = await forwardFileGewe({
+          account,
+          toWxid,
+          xml: geweData.forward.xml.trim(),
+        });
+        break;
+      case "link":
+        result = await forwardLinkGewe({
+          account,
+          toWxid,
+          xml: geweData.forward.xml.trim(),
+        });
+        break;
+      case "miniApp":
+        if (!geweData.forward.coverImgUrl?.trim()) {
+          break;
+        }
+        result = await forwardMiniAppGewe({
+          account,
+          toWxid,
+          xml: geweData.forward.xml.trim(),
+          coverImgUrl: geweData.forward.coverImgUrl.trim(),
+        });
+        break;
+    }
+    if (result) {
+      core.channel.activity.record({
+        channel: CHANNEL_ID,
+        accountId: account.accountId,
+        direction: "outbound",
+      });
+      statusSink?.({ lastOutboundAt: Date.now() });
+      return result;
+    }
   }
 
   if (geweData?.link) {

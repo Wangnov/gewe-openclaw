@@ -445,3 +445,127 @@ test("deliverGewePayload 在 revoke 存在时会优先发送 GeWe 撤回请求",
     assert.match(calls[0]?.url ?? "", /\/gewe\/v2\/api\/message\/revokeMsg$/);
   });
 });
+
+test("GeWe forward API 包装会命中对应官方接口", async () => {
+  installRuntime();
+  const sendModule = (await import("./send.ts")) as Record<string, unknown>;
+  const cases = [
+    {
+      fn: "forwardImageGewe",
+      path: "/gewe/v2/api/message/forwardImage",
+      body: { xml: "<msg><img /></msg>" },
+    },
+    {
+      fn: "forwardVideoGewe",
+      path: "/gewe/v2/api/message/forwardVideo",
+      body: { xml: "<msg><videomsg /></msg>" },
+    },
+    {
+      fn: "forwardFileGewe",
+      path: "/gewe/v2/api/message/forwardFile",
+      body: { xml: "<msg><appmsg><type>6</type></appmsg></msg>" },
+    },
+    {
+      fn: "forwardLinkGewe",
+      path: "/gewe/v2/api/message/forwardUrl",
+      body: { xml: "<msg><appmsg><type>5</type></appmsg></msg>" },
+    },
+    {
+      fn: "forwardMiniAppGewe",
+      path: "/gewe/v2/api/message/forwardMiniApp",
+      body: {
+        xml: "<msg><appmsg><type>33</type></appmsg></msg>",
+        coverImgUrl: "https://example.com/mini-cover.jpg",
+      },
+    },
+  ] as const;
+
+  for (const entry of cases) {
+    assert.equal(typeof sendModule[entry.fn], "function");
+    await withMockFetch(async (calls) => {
+      await (sendModule[entry.fn] as (params: Record<string, unknown>) => Promise<unknown>)({
+        account: createAccount(),
+        toWxid: "wxid_target",
+        ...entry.body,
+      });
+
+      assert.equal(calls.length, 1);
+      assert.match(calls[0]?.url ?? "", new RegExp(`${entry.path}$`));
+      const body = JSON.parse(String(calls[0]?.init?.body ?? "{}")) as Record<string, unknown>;
+      assert.deepEqual(body, {
+        appId: "app-rich",
+        toWxid: "wxid_target",
+        ...entry.body,
+      });
+    });
+  }
+});
+
+test("deliverGewePayload 会按 forward.kind 分发到对应 GeWe 转发接口", async () => {
+  installRuntime();
+  const deliveryModule = (await import("./delivery.ts")) as {
+    deliverGewePayload?: (params: {
+      payload: {
+        text?: string;
+        channelData?: Record<string, unknown>;
+      };
+      account: ResolvedGeweAccount;
+      cfg: {};
+      toWxid: string;
+    }) => Promise<unknown>;
+  };
+
+  const cases = [
+    {
+      kind: "image",
+      path: "/gewe/v2/api/message/forwardImage",
+      xml: "<msg><img /></msg>",
+    },
+    {
+      kind: "video",
+      path: "/gewe/v2/api/message/forwardVideo",
+      xml: "<msg><videomsg /></msg>",
+    },
+    {
+      kind: "file",
+      path: "/gewe/v2/api/message/forwardFile",
+      xml: "<msg><appmsg><type>6</type></appmsg></msg>",
+    },
+    {
+      kind: "link",
+      path: "/gewe/v2/api/message/forwardUrl",
+      xml: "<msg><appmsg><type>5</type></appmsg></msg>",
+    },
+    {
+      kind: "miniApp",
+      path: "/gewe/v2/api/message/forwardMiniApp",
+      xml: "<msg><appmsg><type>33</type></appmsg></msg>",
+      coverImgUrl: "https://example.com/mini-cover.jpg",
+    },
+  ] as const;
+
+  for (const entry of cases) {
+    await withMockFetch(async (calls) => {
+      await deliveryModule.deliverGewePayload?.({
+        payload: {
+          text: "这段纯文本不应抢占 forward",
+          channelData: {
+            "gewe-openclaw": {
+              forward: {
+                kind: entry.kind,
+                xml: entry.xml,
+                ...(entry.coverImgUrl ? { coverImgUrl: entry.coverImgUrl } : {}),
+              },
+            },
+          },
+        },
+        account: createAccount(),
+        cfg: {},
+        toWxid: "wxid_target",
+      });
+
+      assert.equal(calls.length, 1);
+      assert.match(calls[0]?.url ?? "", new RegExp(`${entry.path}$`));
+    });
+  }
+});
