@@ -15,6 +15,7 @@ import { getGeweRuntime } from "./runtime.js";
 import { resolveS3Config, uploadToS3 } from "./s3.js";
 import { buildRustSilkEncodeArgs, ensureRustSilkBinary } from "./silk.js";
 import {
+  sendAppMsgGewe,
   sendFileGewe,
   sendImageGewe,
   sendLinkGewe,
@@ -26,6 +27,9 @@ import type { GeweSendResult, ResolvedGeweAccount } from "./types.js";
 
 type GeweChannelData = {
   ats?: string;
+  appMsg?: {
+    appmsg: string;
+  };
   link?: {
     title: string;
     desc: string;
@@ -836,6 +840,21 @@ export async function deliverGewePayload(params: {
   const mediaUrl =
     payload.mediaUrl?.trim() || payload.mediaUrls?.[0]?.trim() || "";
   const normalizedMediaUrl = normalizeMediaToken(mediaUrl);
+
+  if (geweData?.appMsg?.appmsg?.trim()) {
+    const result = await sendAppMsgGewe({
+      account,
+      toWxid,
+      appmsg: geweData.appMsg.appmsg.trim(),
+    });
+    core.channel.activity.record({
+      channel: CHANNEL_ID,
+      accountId: account.accountId,
+      direction: "outbound",
+    });
+    statusSink?.({ lastOutboundAt: Date.now() });
+    return result;
+  }
 
   if (geweData?.link) {
     const link = geweData.link;
