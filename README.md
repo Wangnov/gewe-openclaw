@@ -120,6 +120,7 @@ openclaw onboard
 插件支持通过 `channelData["gewe-openclaw"]` 传入 GeWe 专有消息语义。结构如下：
 
 - `appMsg: { appmsg }`：直接发送 `<appmsg>` XML。
+- `quoteReply: { svrid?, title?, atWxid? }`：发送引用回复；未提供 `svrid` 时会回退到宿主 `replyToId`。
 - `emoji: { emojiMd5, emojiSize }`：发送表情。
 - `nameCard: { nickName, nameCardWxid }`：发送名片。
 - `miniApp: { miniAppId, displayName, pagePath, coverImgUrl, title, userName }`：发送小程序。
@@ -143,14 +144,38 @@ openclaw onboard
 }
 ```
 
+引用回复示例：
+
+```json
+{
+  "channelData": {
+    "gewe-openclaw": {
+      "quoteReply": {
+        "svrid": "208008054840614808",
+        "title": "这条是引用回复",
+        "atWxid": "wxid_member_optional"
+      }
+    }
+  }
+}
+```
+
+另外，普通文本回复如果带有宿主 `replyToId`，插件会自动映射为 GeWe 的引用回复气泡；媒体、链接、小程序、撤回、转发等既有富消息分支不会被这条自动桥接抢占。
+
 入站 `appmsg` 现在会尽量保留复用素材，并在上下文中附带：
 
 - `MsgType`：原始 GeWe `msgType`
 - `GeWeXml`：原始 XML
 - `GeWeAppMsgXml`：`appmsg` XML
 - `GeWeAppMsgType`：`appmsg` 的 `type`
+- `GeWeQuoteXml`：引用消息原始 XML（当 `type=57` 时）
+- `GeWeQuoteTitle`：引用回复正文
+- `GeWeQuoteType`：被引用消息类型
+- `GeWeQuoteSvrid`：被引用消息 sid
+- `GeWeQuoteFromUsr` / `GeWeQuoteChatUsr` / `GeWeQuoteDisplayName`
+- `GeWeQuoteContent` / `GeWeQuoteMsgSource`
 
-这意味着收到链接、文件通知或其他未专门解析的 `appmsg` 后，可以直接取上下文里的 XML 再走 `forward` / `appMsg` 能力完成复用。
+这意味着收到链接、文件通知、引用消息或其他未专门解析的 `appmsg` 后，可以直接取上下文里的 XML 和引用元数据，再走 `forward` / `appMsg` / `quoteReply` 能力完成复用或继续回复。
 
 > 配置变更后需重启 Gateway。
 
