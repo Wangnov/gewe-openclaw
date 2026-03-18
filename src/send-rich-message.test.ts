@@ -419,6 +419,44 @@ test("replyToId + text 会自动发送引用回复", async () => {
   });
 });
 
+test("关闭 autoQuoteReply 后 replyToId + text 会回退为普通文本发送", async () => {
+  installRuntime();
+  const deliveryModule = (await import("./delivery.ts")) as {
+    deliverGewePayload?: (params: {
+      payload: {
+        text?: string;
+        channelData?: Record<string, unknown>;
+        replyToId?: string;
+        mediaUrl?: string;
+        mediaUrls?: string[];
+      };
+      account: ResolvedGeweAccount;
+      cfg: {};
+      toWxid: string;
+    }) => Promise<unknown>;
+  };
+
+  await withMockFetch(async (calls) => {
+    await deliveryModule.deliverGewePayload?.({
+      payload: {
+        text: "收到",
+        replyToId: "208008054840614808",
+      },
+      account: createAccount({ autoQuoteReply: false }),
+      cfg: {},
+      toWxid: "wxid_target",
+    });
+
+    assert.equal(calls.length, 1);
+    assert.match(calls[0]?.url ?? "", /\/gewe\/v2\/api\/message\/postText$/);
+    assert.doesNotMatch(calls[0]?.url ?? "", /\/gewe\/v2\/api\/message\/postAppMsg$/);
+    const body = JSON.parse(String(calls[0]?.init?.body ?? "{}")) as {
+      content?: string;
+    };
+    assert.equal(body.content, "收到");
+  });
+});
+
 test("replyToId + GEWE_QUOTE_PARTIAL 指令会自动发送部分引用回复", async () => {
   installRuntime();
   const deliveryModule = (await import("./delivery.ts")) as {

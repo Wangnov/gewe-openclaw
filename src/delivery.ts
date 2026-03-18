@@ -960,6 +960,7 @@ export async function deliverGewePayload(params: {
           messageId: payload.replyToId,
         })
       : null;
+  const autoQuoteReplyEnabled = account.config.autoQuoteReply !== false;
 
   if (geweData?.appMsg?.appmsg?.trim()) {
     const result = await sendAppMsgGewe({
@@ -1158,7 +1159,7 @@ export async function deliverGewePayload(params: {
     return result;
   }
 
-  if (trimmedText && payload.replyToId?.trim() && !mediaUrl) {
+  if (autoQuoteReplyEnabled && trimmedText && payload.replyToId?.trim() && !mediaUrl) {
     const result = await sendAppMsgGewe({
       account,
       toWxid,

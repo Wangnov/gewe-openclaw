@@ -107,9 +107,10 @@ openclaw onboard
  - `voiceSilkPipe`：是否启用 ffmpeg+rust-silk 的 stdin/stdout 管道（默认关闭；失败会回退到临时文件）。
    - 低频/非高并发且磁盘压力不高时，推荐临时文件方案（更稳定/更快）。
    - 高频/多并发或磁盘压力大时，推荐 pipe 方案（减少磁盘 IO）。
- - `voiceDecodePath`/`voiceDecodeArgs`/`voiceDecodeOutput`：自定义 silk 解码器（入站语音转写用）。
- - `mediaMaxMb`：上传媒体大小上限（默认 20MB）。
- - `downloadMinDelayMs`/`downloadMaxDelayMs`：入站媒体下载节流。
+- `voiceDecodePath`/`voiceDecodeArgs`/`voiceDecodeOutput`：自定义 silk 解码器（入站语音转写用）。
+- `mediaMaxMb`：上传媒体大小上限（默认 20MB）。
+- `downloadMinDelayMs`/`downloadMaxDelayMs`：入站媒体下载节流。
+- `autoQuoteReply`：是否开启 `replyToId + 纯文本` 自动引用回复（默认开启；设为 `false` 可关闭）。
 
 发送媒体时的 URL 策略：
 - 本地文件：优先上传 S3，失败回退 `mediaPublicUrl` 本地反代。
@@ -160,7 +161,7 @@ openclaw onboard
 }
 ```
 
-另外，普通文本回复如果带有宿主 `replyToId`，插件会自动映射为 GeWe 的引用回复气泡；媒体、链接、小程序、撤回、转发等既有富消息分支不会被这条自动桥接抢占。
+另外，普通文本回复如果带有宿主 `replyToId`，插件默认会自动映射为 GeWe 的引用回复气泡；媒体、链接、小程序、撤回、转发等既有富消息分支不会被这条自动桥接抢占。若不希望自动引用，可在配置里设置 `autoQuoteReply: false`。
 
 如果希望让模型主动发“部分引用”，GeWe 通道会识别回复末尾的一行隐藏指令：
 

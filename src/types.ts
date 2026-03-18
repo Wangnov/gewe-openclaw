@@ -77,6 +77,7 @@ export type GeweAccountConfig = {
   dms?: Record<string, DmConfig>;
   textChunkLimit?: number;
   chunkMode?: "length" | "newline";
+  autoQuoteReply?: boolean;
   blockStreaming?: boolean;
   blockStreamingCoalesce?: BlockStreamingCoalesceConfig;
 };
