@@ -1100,6 +1100,24 @@ export async function deliverGewePayload(params: {
     return result;
   }
 
+  if (trimmedText && payload.replyToId?.trim() && !mediaUrl) {
+    const result = await sendAppMsgGewe({
+      account,
+      toWxid,
+      appmsg: buildQuoteReplyAppMsg({
+        svrid: payload.replyToId.trim(),
+        title: trimmedText,
+      }),
+    });
+    core.channel.activity.record({
+      channel: CHANNEL_ID,
+      accountId: account.accountId,
+      direction: "outbound",
+    });
+    statusSink?.({ lastOutboundAt: Date.now() });
+    return result;
+  }
+
   if (mediaUrl) {
     const audioAsVoice = payload.audioAsVoice === true;
     const forceFile = geweData?.forceFile === true;

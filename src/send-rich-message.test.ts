@@ -18,6 +18,19 @@ function createAccount(config: ResolvedGeweAccount["config"] = {}): ResolvedGewe
 
 function installRuntime() {
   setGeweRuntime({
+    media: {
+      detectMime: async ({ filePath }: { filePath?: string }) => {
+        if (filePath?.endsWith(".png")) return "image/png";
+        if (filePath?.endsWith(".jpg") || filePath?.endsWith(".jpeg")) return "image/jpeg";
+        return "application/octet-stream";
+      },
+      mediaKindFromMime: (mime?: string) => {
+        if ((mime ?? "").startsWith("image/")) return "image";
+        if ((mime ?? "").startsWith("video/")) return "video";
+        if ((mime ?? "").startsWith("audio/")) return "audio";
+        return "file";
+      },
+    },
     logging: {
       getChildLogger: () => ({
         info() {},
@@ -313,6 +326,80 @@ test("quoteReply.atWxid 会生成 refermsg.msgsource atuserlist", async () => {
       body.appmsg ?? "",
       /&lt;msgsource&gt;&lt;atuserlist&gt;wxid_member_1&lt;\/atuserlist&gt;&lt;\/msgsource&gt;/,
     );
+  });
+});
+
+test("replyToId + text 会自动发送引用回复", async () => {
+  installRuntime();
+  const deliveryModule = (await import("./delivery.ts")) as {
+    deliverGewePayload?: (params: {
+      payload: {
+        text?: string;
+        channelData?: Record<string, unknown>;
+        replyToId?: string;
+        mediaUrl?: string;
+        mediaUrls?: string[];
+      };
+      account: ResolvedGeweAccount;
+      cfg: {};
+      toWxid: string;
+    }) => Promise<unknown>;
+  };
+
+  await withMockFetch(async (calls) => {
+    await deliveryModule.deliverGewePayload?.({
+      payload: {
+        text: "收到",
+        replyToId: "208008054840614808",
+      },
+      account: createAccount(),
+      cfg: {},
+      toWxid: "wxid_target",
+    });
+
+    assert.equal(calls.length, 1);
+    assert.match(calls[0]?.url ?? "", /\/gewe\/v2\/api\/message\/postAppMsg$/);
+    const body = JSON.parse(String(calls[0]?.init?.body ?? "{}")) as {
+      appmsg?: string;
+    };
+    assert.match(body.appmsg ?? "", /<type>57<\/type>/);
+    assert.match(body.appmsg ?? "", /<svrid>208008054840614808<\/svrid>/);
+    assert.match(body.appmsg ?? "", /<title>收到<\/title>/);
+  });
+});
+
+test("媒体 payload 不会被自动引用逻辑拦截", async () => {
+  installRuntime();
+  const deliveryModule = (await import("./delivery.ts")) as {
+    deliverGewePayload?: (params: {
+      payload: {
+        text?: string;
+        channelData?: Record<string, unknown>;
+        replyToId?: string;
+        mediaUrl?: string;
+        mediaUrls?: string[];
+      };
+      account: ResolvedGeweAccount;
+      cfg: {};
+      toWxid: string;
+    }) => Promise<unknown>;
+  };
+
+  await withMockFetch(async (calls) => {
+    await deliveryModule.deliverGewePayload?.({
+      payload: {
+        text: "这里的文本不应触发自动引用",
+        replyToId: "208008054840614808",
+        mediaUrl: "https://example.com/test.png",
+      },
+      account: createAccount(),
+      cfg: {},
+      toWxid: "wxid_target",
+    });
+
+    assert.equal(calls.length, 1);
+    assert.doesNotMatch(calls[0]?.url ?? "", /\/gewe\/v2\/api\/message\/postAppMsg$/);
+    assert.match(calls[0]?.url ?? "", /\/gewe\/v2\/api\/message\/postImage$/);
   });
 });
 
