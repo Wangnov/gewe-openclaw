@@ -204,6 +204,174 @@ openclaw onboard
 }
 ```
 
+## 把群绑定到 Agent / ACP
+
+除了 `channels.gewe-openclaw` 这一段插件配置，GeWe 还支持配合 OpenClaw 顶层 `bindings[]` 使用。
+
+可以把它理解成两层：
+
+- 顶层 `bindings[]` 决定“这个群/私聊归哪个 agent，或者归哪个 ACP 持久会话”
+- `groups.<groupId>.bindingIdentity` 决定“绑定以后，机器人在这个群里显示成什么身份”
+
+### 绑定到普通 Agent
+
+下面这个例子表示：`ops-room@chatroom` 这个群固定交给 `ops` agent 处理。
+
+```json5
+{
+  "bindings": [
+    {
+      "type": "route",
+      "agentId": "ops",
+      "match": {
+        "channel": "gewe-openclaw",
+        "accountId": "work",
+        "peer": {
+          "kind": "group",
+          "id": "ops-room@chatroom"
+        }
+      }
+    }
+  ],
+  "channels": {
+    "gewe-openclaw": {
+      "accounts": {
+        "work": {
+          "groups": {
+            "ops-room@chatroom": {
+              "trigger": { "mode": "at_or_quote" },
+              "reply": { "mode": "quote_and_at" }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+说明：
+
+- `match.channel` 写 `gewe-openclaw`
+- `match.accountId` 可写具体账号，也可以写 `"*"`
+- 群聊 `peer.kind` 写 `"group"`，`peer.id` 直接写 `群ID@chatroom`
+- `bindings[]` 用于描述群或私聊与 agent 的绑定关系
+
+### 绑定到 ACP 持久会话
+
+下面这个例子表示：这个群固定进入 `codex` agent 的一个 ACP 持久会话。
+
+```json5
+{
+  "bindings": [
+    {
+      "type": "acp",
+      "agentId": "codex",
+      "match": {
+        "channel": "gewe-openclaw",
+        "accountId": "work",
+        "peer": {
+          "kind": "group",
+          "id": "repo-room@chatroom"
+        }
+      },
+      "acp": {
+        "label": "repo-room",
+        "mode": "persistent",
+        "cwd": "/workspace/repo-a",
+        "backend": "acpx"
+      }
+    }
+  ]
+}
+```
+
+说明：
+
+- GeWe 群没有 Telegram topic / Feishu thread 这种层级，所以 ACP 绑定语义是“整群共享一个 ACP 会话”
+- 同一个群只配置一种绑定方式，不要同时配置普通 route binding 和 ACP binding
+
+### 群里的绑定身份
+
+`groups.<groupId>.bindingIdentity` 用来描述“这个群已经绑定到 agent 后，机器人在群里应该显示成什么样”。
+
+当前只同步两项：
+
+- 机器人自己的群昵称 `selfNickname`
+- 这个群在机器人侧的备注 `remark`
+
+不会改群名。
+
+```json5
+{
+  "channels": {
+    "gewe-openclaw": {
+      "groups": {
+        "*": {
+          "bindingIdentity": {
+            "enabled": true,
+            "selfNickname": { "source": "agent_name" },
+            "remark": { "source": "agent_id" }
+          }
+        },
+        "repo-room@chatroom": {
+          "bindingIdentity": {
+            "remark": { "source": "name_and_id" }
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+默认值：
+
+- `enabled = true`
+- `selfNickname.source = "agent_name"`
+- `remark.source = "agent_id"`
+
+可选值：
+
+- `selfNickname.source`: `agent_name | agent_id | literal`
+- `remark.source`: `agent_id | agent_name | name_and_id | literal`
+
+当 `source = "literal"` 时，需要额外提供 `value`。
+
+### 手动同步群绑定身份
+
+插件提供了一个仅 owner 可用的工具：`gewe_sync_group_binding`。
+
+它不会在启动时自动改微信群信息，而是采用手动同步流程：
+
+1. 先配置顶层 `bindings[]`
+2. 再按需配置 `groups.<groupId>.bindingIdentity`
+3. 最后由 owner 调用 `gewe_sync_group_binding`
+
+工具参数：
+
+```json5
+{
+  "mode": "inspect", // inspect | dry_run | apply
+  "groupId": "repo-room@chatroom", // 可选；在当前绑定群里可自动推断
+  "accountId": "work",             // 可选；默认当前账号
+  "syncSelfNickname": true,
+  "syncRemark": true
+}
+```
+
+三个模式的区别：
+
+- `inspect`：查看当前值、期望值、会改哪些字段
+- `dry_run`：和 `inspect` 类似，但明确用于“准备执行前预演”
+- `apply`：只在字段真的发生变化时调用 GeWe API
+
+使用限制：
+
+- 只接受“有显式 binding 的群”，不会对仅靠默认 main route 命中的群做推断同步
+- `bindingIdentity.enabled = false` 的群不能执行同步
+- 在非群上下文里调用时，必须显式传 `groupId`
+
 发送媒体时的 URL 策略：
 - 本地文件：优先上传 S3，失败回退 `mediaPublicUrl` 本地反代。
 - 公网 URL：先尝试原 URL 发送，失败后再尝试上传 S3，仍失败回退本地反代。

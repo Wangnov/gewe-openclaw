@@ -17,6 +17,10 @@ test("GeWe 配置支持 group/dm trigger 与 reply 规则", () => {
       "*": {
         trigger: { mode: "at_or_quote" },
         reply: { mode: "quote_and_at" },
+        bindingIdentity: {
+          selfNickname: { source: "agent_name" },
+          remark: { source: "agent_id" },
+        },
       },
     },
     dms: {
@@ -30,6 +34,22 @@ test("GeWe 配置支持 group/dm trigger 与 reply 规则", () => {
   });
 
   assert.equal(parsed.success, true);
+});
+
+test("GeWe 群 bindingIdentity 的 literal 模式要求提供 value", () => {
+  const parsed = GeweConfigSchema.safeParse({
+    dmPolicy: "open",
+    allowFrom: ["*"],
+    groups: {
+      "*": {
+        bindingIdentity: {
+          selfNickname: { source: "literal" },
+        },
+      },
+    },
+  });
+
+  assert.equal(parsed.success, false);
 });
 
 test("GeWe DM reply 规则不接受群聊专属 at 模式", () => {

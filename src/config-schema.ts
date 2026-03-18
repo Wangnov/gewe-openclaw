@@ -33,6 +33,46 @@ const GeweDmReplySchema = z
   })
   .strict();
 
+const GeweBindingIdentitySelfSchema = z
+  .object({
+    source: z.enum(["agent_name", "agent_id", "literal"]).optional(),
+    value: z.string().optional(),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    if (value.source === "literal" && !value.value?.trim()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["value"],
+        message: "value is required when source=literal",
+      });
+    }
+  });
+
+const GeweBindingIdentityRemarkSchema = z
+  .object({
+    source: z.enum(["agent_id", "agent_name", "name_and_id", "literal"]).optional(),
+    value: z.string().optional(),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    if (value.source === "literal" && !value.value?.trim()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["value"],
+        message: "value is required when source=literal",
+      });
+    }
+  });
+
+const GeweBindingIdentitySchema = z
+  .object({
+    enabled: z.boolean().optional(),
+    selfNickname: GeweBindingIdentitySelfSchema.optional(),
+    remark: GeweBindingIdentityRemarkSchema.optional(),
+  })
+  .strict();
+
 export const GeweGroupSchema = z
   .object({
     requireMention: z.boolean().optional(),
@@ -43,6 +83,7 @@ export const GeweGroupSchema = z
     systemPrompt: z.string().optional(),
     trigger: GeweGroupTriggerSchema.optional(),
     reply: GeweGroupReplySchema.optional(),
+    bindingIdentity: GeweBindingIdentitySchema.optional(),
   })
   .strict();
 

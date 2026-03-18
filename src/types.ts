@@ -28,6 +28,29 @@ export type GeweDmReplyConfig = {
   mode?: GeweDmReplyMode;
 };
 
+export type GeweBindingIdentitySelfSource = "agent_name" | "agent_id" | "literal";
+export type GeweBindingIdentityRemarkSource =
+  | "agent_id"
+  | "agent_name"
+  | "name_and_id"
+  | "literal";
+
+export type GeweBindingIdentitySelfConfig = {
+  source?: GeweBindingIdentitySelfSource;
+  value?: string;
+};
+
+export type GeweBindingIdentityRemarkConfig = {
+  source?: GeweBindingIdentityRemarkSource;
+  value?: string;
+};
+
+export type GeweGroupBindingIdentityConfig = {
+  enabled?: boolean;
+  selfNickname?: GeweBindingIdentitySelfConfig;
+  remark?: GeweBindingIdentityRemarkConfig;
+};
+
 export type GeweGroupConfig = {
   requireMention?: boolean;
   tools?: GroupToolPolicyConfig;
@@ -37,6 +60,7 @@ export type GeweGroupConfig = {
   systemPrompt?: string;
   trigger?: GeweGroupTriggerConfig;
   reply?: GeweGroupReplyConfig;
+  bindingIdentity?: GeweGroupBindingIdentityConfig;
 };
 
 export type GeweDmConfig = DmConfig & {

@@ -18,26 +18,31 @@
 }
 ```
 
-## 2. 先理解 4 个配置作用域
+## 2. 先理解 5 个配置作用域
 
-GeWe 的配置不是只有一层。为了便于管理，它分成 4 个作用域：
+GeWe 的配置不是只有一层。为了便于管理，它分成 5 个作用域：
 
-1. `channels.gewe-openclaw`
+1. 顶层 `bindings[]`
+   这是 OpenClaw 宿主的全局绑定表，不在 `channels.gewe-openclaw` 里面。
+   它负责把某个 GeWe 群或私聊绑定到指定 agent，或者绑定到一个 ACP 持久会话。
+
+2. `channels.gewe-openclaw`
    全局默认配置。默认账号、默认策略、默认 webhook、默认媒体配置都可以放这里。
 
-2. `channels.gewe-openclaw.accounts.<accountId>`
+3. `channels.gewe-openclaw.accounts.<accountId>`
    某个账号的覆盖配置。适合一机多微信号、多套 token/appId、多套群规则。
 
-3. `groups.<groupId>`
+4. `groups.<groupId>`
    某个群聊的局部规则。适合“这个群要 `at` 才回复，那个群任何消息都回复”。
 
-4. `dms.<wxid>`
+5. `dms.<wxid>`
    某个私聊对象的局部规则。适合“默认私聊都能聊，但某个人只有 quote 才触发”。
 
 ## 3. 合并与覆盖规则
 
 理解这个插件，最重要的一点就是“顶层默认 + 账号覆盖 + 群/私聊局部覆盖”。
 
+- 顶层 `bindings[]` 由 OpenClaw 宿主直接匹配，不参与 `channels.gewe-openclaw` 的继承合并。
 - 顶层 `channels.gewe-openclaw` 会先作为默认值。
 - `accounts.<accountId>` 会覆盖同名顶层字段。
 - `groups` 和 `dms` 是“合并”的，不是整块替换。
@@ -725,6 +730,129 @@ GeWe 的配置不是只有一层。为了便于管理，它分成 4 个作用域
 
 如果你同时写了 `requireMention` 和 `trigger.mode`，新的 `trigger.mode` 优先。
 
+### 11.10 `groups.<key>.bindingIdentity`
+
+- 类型：
+
+```json5
+{
+  "enabled": true,
+  "selfNickname": {
+    "source": "agent_name"
+  },
+  "remark": {
+    "source": "agent_id"
+  }
+}
+```
+
+- 作用：定义“这个群已经绑定到某个 agent 后，机器人在群里应该显示成什么身份”
+- 适用范围：只用于“已经通过顶层 `bindings[]` 显式绑定”的群
+- 不会做的事：不会改群名
+
+当前只同步两项：
+
+- 机器人自己的群昵称 `selfNickname`
+- 该群在机器人侧的群备注 `remark`
+
+默认值：
+
+- `enabled = true`
+- `selfNickname.source = "agent_name"`
+- `remark.source = "agent_id"`
+
+### 11.11 `groups.<key>.bindingIdentity.enabled`
+
+- 类型：`boolean`
+- 作用：是否允许这个群执行绑定身份同步
+
+如果设为 `false`：
+
+- 绑定本身仍然可以生效
+- 只是 `gewe_sync_group_binding` 不会对这个群执行同步
+
+### 11.12 `groups.<key>.bindingIdentity.selfNickname`
+
+- 类型：
+
+```json5
+{
+  "source": "agent_name" // 或 agent_id / literal
+}
+```
+
+- 作用：控制机器人在这个群里的“我在群里的昵称”应该是什么
+
+`source` 可选值：
+
+- `agent_name`
+  使用 agent 的显示名；优先取 `agents.list[].name`，没有时回退到 `agentId`
+
+- `agent_id`
+  直接使用 `agentId`
+
+- `literal`
+  使用你手工指定的固定值；此时必须同时提供 `value`
+
+示例：
+
+```json5
+{
+  "groups": {
+    "project-room@chatroom": {
+      "bindingIdentity": {
+        "selfNickname": {
+          "source": "literal",
+          "value": "项目助理"
+        }
+      }
+    }
+  }
+}
+```
+
+### 11.13 `groups.<key>.bindingIdentity.remark`
+
+- 类型：
+
+```json5
+{
+  "source": "agent_id" // 或 agent_name / name_and_id / literal
+}
+```
+
+- 作用：控制这个群在机器人侧显示的备注内容
+
+`source` 可选值：
+
+- `agent_id`
+  备注写成 `agentId`
+
+- `agent_name`
+  备注写成 agent 显示名
+
+- `name_and_id`
+  备注写成 `Agent Name (agent-id)`
+
+- `literal`
+  使用固定值；此时必须同时提供 `value`
+
+示例：
+
+```json5
+{
+  "groups": {
+    "*": {
+      "bindingIdentity": {
+        "remark": {
+          "source": "name_and_id"
+        }
+      }
+    }
+  }
+}
+```
+
 ## 12. `dms`：按私聊对象做局部配置
 
 `dms` 是一个对象，key 建议直接使用对方的 `wxid`。
@@ -996,6 +1124,80 @@ GeWe 的配置不是只有一层。为了便于管理，它分成 4 个作用域
 }
 ```
 
+### 场景 G：把某个群固定路由到 `ops` agent
+
+```json5
+{
+  "bindings": [
+    {
+      "type": "route",
+      "agentId": "ops",
+      "match": {
+        "channel": "gewe-openclaw",
+        "peer": {
+          "kind": "group",
+          "id": "ops-room@chatroom"
+        }
+      }
+    }
+  ],
+  "channels": {
+    "gewe-openclaw": {
+      "groups": {
+        "ops-room@chatroom": {
+          "trigger": { "mode": "at_or_quote" },
+          "reply": { "mode": "quote_and_at" }
+        }
+      }
+    }
+  }
+}
+```
+
+### 场景 H：把某个群绑定成 ACP 持久会话
+
+```json5
+{
+  "bindings": [
+    {
+      "type": "acp",
+      "agentId": "codex",
+      "match": {
+        "channel": "gewe-openclaw",
+        "peer": {
+          "kind": "group",
+          "id": "repo-room@chatroom"
+        }
+      },
+      "acp": {
+        "label": "repo-room",
+        "mode": "persistent",
+        "cwd": "/workspace/repo-a"
+      }
+    }
+  ]
+}
+```
+
+### 场景 I：绑定后把机器人群昵称设成 agent 名称，备注设成“名称 + ID”
+
+```json5
+{
+  "channels": {
+    "gewe-openclaw": {
+      "groups": {
+        "*": {
+          "bindingIdentity": {
+            "selfNickname": { "source": "agent_name" },
+            "remark": { "source": "name_and_id" }
+          }
+        }
+      }
+    }
+  }
+}
+```
+
 ## 16. 配置校验与常见坑
 
 ### 16.1 `dmPolicy = "open"` 不是“什么都不用配”
@@ -1059,12 +1261,153 @@ GeWe 的配置不是只有一层。为了便于管理，它分成 4 个作用域
 
 这点非常适合做“继续追问”式交互，但不适合拿来当“引用任何人都能叫醒机器人”的模式。
 
+### 16.6 顶层 `bindings[]` 才是“群绑定到 Agent”的入口
+
+如果你想把某个微信群固定交给某个 agent，不要在 `groups` 里找 `agentId` 之类的字段。
+
+正确做法是：使用 OpenClaw 顶层 `bindings[]`。
+
+普通 route binding 示例：
+
+```json5
+{
+  "bindings": [
+    {
+      "type": "route",
+      "agentId": "ops",
+      "match": {
+        "channel": "gewe-openclaw",
+        "accountId": "work",
+        "peer": {
+          "kind": "group",
+          "id": "ops-room@chatroom"
+        }
+      }
+    }
+  ]
+}
+```
+
+说明：
+
+- `match.channel` 固定写 `gewe-openclaw`
+- 群聊写 `peer.kind = "group"`
+- 私聊也能绑定，此时把 `peer.kind` 写成 `"direct"`，`peer.id` 写成对方 `wxid`
+- `accountId` 可省略，省略时表示默认账号；也可以写 `"*"` 表示匹配任意账号
+- 顶层 `bindings[]` 用于描述会话与 agent 的绑定关系
+
+### 16.7 GeWe 的 ACP 绑定语义是“整群共享一个会话”
+
+GeWe 群没有 Telegram topic、Feishu thread 这种子会话结构。
+
+所以 ACP binding 在 GeWe 里的含义是：
+
+- 整个群固定进入一个 ACP 持久会话
+- 不是“群里不同话题各有一个 ACP 会话”
+
+示例：
+
+```json5
+{
+  "bindings": [
+    {
+      "type": "acp",
+      "agentId": "codex",
+      "match": {
+        "channel": "gewe-openclaw",
+        "accountId": "work",
+        "peer": {
+          "kind": "group",
+          "id": "repo-room@chatroom"
+        }
+      },
+      "acp": {
+        "label": "repo-room",
+        "mode": "persistent",
+        "cwd": "/workspace/repo-a",
+        "backend": "acpx"
+      }
+    }
+  ]
+}
+```
+
+额外注意：
+
+- 同一个群只配置一种绑定方式，不要同时配置 route binding 和 ACP binding
+
+### 16.8 `bindingIdentity` 不是新的路由入口
+
+很多人第一次看到 `bindingIdentity`，会误以为这是“把群绑到 agent”的地方。
+
+不是。
+
+它只负责“这个群已经绑定后，机器人在微信侧显示什么昵称/备注”，不负责决定路由。
+
+也就是说：
+
+- `bindings[]` 决定路由
+- `groups.<groupId>.bindingIdentity` 决定显示身份
+
+### 16.9 `gewe_sync_group_binding` 用于手动同步群绑定身份
+
+同步方式如下：
+
+- 插件启动时不会自动改群昵称或备注
+- 需要 owner 手动调用 `gewe_sync_group_binding`
+
+工具参数：
+
+```json5
+{
+  "mode": "inspect", // inspect | dry_run | apply
+  "groupId": "repo-room@chatroom",
+  "accountId": "work",
+  "syncSelfNickname": true,
+  "syncRemark": true
+}
+```
+
+模式区别：
+
+- `inspect`：查看当前值、期望值、binding 命中情况
+- `dry_run`：用于执行前确认 diff
+- `apply`：只在目标值真的变化时调用 GeWe API
+
+### 16.10 只有“显式绑定的群”才能做同步
+
+`gewe_sync_group_binding` 不会对“只是默认落到 main agent 的群”做猜测式同步。
+
+它要求这个群必须：
+
+- 在顶层 `bindings[]` 里有显式命中项
+- 并且 `bindingIdentity.enabled !== false`
+
+这样做的好处是：
+
+- 你不会误把一个临时群同步成某个 agent 的身份
+- 群里的公开身份变化是可审计、可预期的
+
 ## 17. 一份完整、用户友好的示例
 
 下面是一份偏生产可用的综合示例：
 
 ```json5
 {
+  "bindings": [
+    {
+      "type": "route",
+      "agentId": "project",
+      "match": {
+        "channel": "gewe-openclaw",
+        "accountId": "default",
+        "peer": {
+          "kind": "group",
+          "id": "project-room@chatroom"
+        }
+      }
+    }
+  ],
   "channels": {
     "gewe-openclaw": {
       "enabled": true,
@@ -1086,13 +1429,20 @@ GeWe 的配置不是只有一层。为了便于管理，它分成 4 个作用域
       "groups": {
         "*": {
           "trigger": { "mode": "at" },
-          "reply": { "mode": "quote_source" }
+          "reply": { "mode": "quote_source" },
+          "bindingIdentity": {
+            "selfNickname": { "source": "agent_name" },
+            "remark": { "source": "agent_id" }
+          }
         },
         "project-room@chatroom": {
           "trigger": { "mode": "at_or_quote" },
           "reply": { "mode": "quote_and_at" },
           "skills": ["project-skill"],
           "systemPrompt": "You are the project room assistant.",
+          "bindingIdentity": {
+            "remark": { "source": "name_and_id" }
+          },
           "tools": {
             "deny": ["exec_command"]
           }
@@ -1158,7 +1508,13 @@ GeWe 的配置不是只有一层。为了便于管理，它分成 4 个作用域
 4. 再调群触发方式
    用 `groups.*.trigger.mode`
 
-5. 最后再做体验优化
+5. 如果要做群绑定
+   再补顶层 `bindings[]` 和 `groups.<groupId>.bindingIdentity`
+
+6. 最后再做体验优化
    用 `reply.mode`、`skills`、`systemPrompt`、`tools`、`blockStreamingCoalesce`
+
+7. 需要时手动同步群身份
+   由 owner 调用 `gewe_sync_group_binding` 的 `inspect / dry_run / apply`
 
 如果你已经有一份 `openclaw.json`，也可以直接把 `channels.gewe-openclaw` 这一段贴出来，我可以继续帮你按你的实际使用场景整理成一份更合适的版本。

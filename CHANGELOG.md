@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2026.3.20] - 2026-03-18
+
+### Added
+
+- GeWe 会话支持通过顶层 `bindings[]` 配置显式绑定目标 agent，便于按群或私聊拆分不同助手。
+- 新增 `groups[*].bindingIdentity` 配置，可按 `agent_name`、`agent_id` 或自定义字面量生成机器人群昵称与群备注。
+- 新增 `gewe_sync_group_binding` 工具，用于查看、预演并同步群绑定身份信息。
+
+### Changed
+
+- README 与 `openclaw.json` 配置手册新增群绑定、ACP 绑定、`bindingIdentity` 与同步流程示例。
+- 配置文档整体改写为面向使用者的说明，聚焦“怎么配、怎么用、有什么效果”。
+
 ## [2026.3.19] - 2026-03-18
 
 ### Added

@@ -30,6 +30,7 @@ import { getGeweRuntime } from "./runtime.js";
 import { sendTextGewe } from "./send.js";
 import { geweSetupWizard } from "./setup-wizard.js";
 import type { GeweChannelPlugin } from "./setup-wizard-types.js";
+import { normalizeGeweBindingConversationId } from "./group-binding.js";
 import type { CoreConfig, ResolvedGeweAccount } from "./types.js";
 
 const meta = {
@@ -246,6 +247,26 @@ export const gewePlugin: GeweChannelPlugin<ResolvedGeweAccount> = {
       return [
         `- GeWe groups: groupPolicy="open" with no channels.${CHANNEL_CONFIG_KEY}.groups allowlist; any group can add + at (at-gated by default). Set channels.${CHANNEL_CONFIG_KEY}.groupPolicy="allowlist" + channels.${CHANNEL_CONFIG_KEY}.groupAllowFrom or configure channels.${CHANNEL_CONFIG_KEY}.groups.`,
       ];
+    },
+  },
+  bindings: {
+    compileConfiguredBinding: ({ conversationId }) => {
+      const normalized = normalizeGeweBindingConversationId(conversationId);
+      return normalized
+        ? {
+            conversationId: normalized,
+          }
+        : null;
+    },
+    matchInboundConversation: ({ compiledBinding, conversationId }) => {
+      const normalized = normalizeGeweBindingConversationId(conversationId);
+      if (!normalized || normalized !== compiledBinding.conversationId) {
+        return null;
+      }
+      return {
+        conversationId: normalized,
+        matchPriority: 2,
+      };
     },
   },
   groups: {
