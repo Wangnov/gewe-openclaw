@@ -210,3 +210,78 @@ test("deliverGewePayload 在 emoji 存在时会优先发送 GeWe emoji", async (
     assert.match(calls[0]?.url ?? "", /\/gewe\/v2\/api\/message\/postEmoji$/);
   });
 });
+
+test("sendNameCardGewe 会向 GeWe postNameCard 发送名片元数据", async () => {
+  installRuntime();
+  const sendModule = (await import("./send.ts")) as {
+    sendNameCardGewe?: (params: {
+      account: ResolvedGeweAccount;
+      toWxid: string;
+      nickName: string;
+      nameCardWxid: string;
+    }) => Promise<unknown>;
+  };
+
+  assert.equal(typeof sendModule.sendNameCardGewe, "function");
+
+  await withMockFetch(async (calls) => {
+    await sendModule.sendNameCardGewe?.({
+      account: createAccount(),
+      toWxid: "wxid_target",
+      nickName: "谭艳",
+      nameCardWxid: "wxid_0xsqb3o0tsvz22",
+    });
+
+    assert.equal(calls.length, 1);
+    assert.match(calls[0]?.url ?? "", /\/gewe\/v2\/api\/message\/postNameCard$/);
+    const body = JSON.parse(String(calls[0]?.init?.body ?? "{}")) as {
+      appId?: string;
+      toWxid?: string;
+      nickName?: string;
+      nameCardWxid?: string;
+    };
+    assert.deepEqual(body, {
+      appId: "app-rich",
+      toWxid: "wxid_target",
+      nickName: "谭艳",
+      nameCardWxid: "wxid_0xsqb3o0tsvz22",
+    });
+  });
+});
+
+test("deliverGewePayload 在 nameCard 存在时会优先发送 GeWe 名片", async () => {
+  installRuntime();
+  const deliveryModule = (await import("./delivery.ts")) as {
+    deliverGewePayload?: (params: {
+      payload: {
+        text?: string;
+        channelData?: Record<string, unknown>;
+      };
+      account: ResolvedGeweAccount;
+      cfg: {};
+      toWxid: string;
+    }) => Promise<unknown>;
+  };
+
+  await withMockFetch(async (calls) => {
+    await deliveryModule.deliverGewePayload?.({
+      payload: {
+        text: "这段纯文本不应抢占 nameCard",
+        channelData: {
+          "gewe-openclaw": {
+            nameCard: {
+              nickName: "谭艳",
+              nameCardWxid: "wxid_0xsqb3o0tsvz22",
+            },
+          },
+        },
+      },
+      account: createAccount(),
+      cfg: {},
+      toWxid: "wxid_target",
+    });
+
+    assert.equal(calls.length, 1);
+    assert.match(calls[0]?.url ?? "", /\/gewe\/v2\/api\/message\/postNameCard$/);
+  });
+});

@@ -20,6 +20,7 @@ import {
   sendFileGewe,
   sendImageGewe,
   sendLinkGewe,
+  sendNameCardGewe,
   sendTextGewe,
   sendVideoGewe,
   sendVoiceGewe,
@@ -34,6 +35,10 @@ type GeweChannelData = {
   emoji?: {
     emojiMd5: string;
     emojiSize: number;
+  };
+  nameCard?: {
+    nickName: string;
+    nameCardWxid: string;
   };
   link?: {
     title: string;
@@ -867,6 +872,22 @@ export async function deliverGewePayload(params: {
       toWxid,
       emojiMd5: geweData.emoji.emojiMd5.trim(),
       emojiSize: Math.floor(geweData.emoji.emojiSize),
+    });
+    core.channel.activity.record({
+      channel: CHANNEL_ID,
+      accountId: account.accountId,
+      direction: "outbound",
+    });
+    statusSink?.({ lastOutboundAt: Date.now() });
+    return result;
+  }
+
+  if (geweData?.nameCard?.nickName?.trim() && geweData.nameCard.nameCardWxid?.trim()) {
+    const result = await sendNameCardGewe({
+      account,
+      toWxid,
+      nickName: geweData.nameCard.nickName.trim(),
+      nameCardWxid: geweData.nameCard.nameCardWxid.trim(),
     });
     core.channel.activity.record({
       channel: CHANNEL_ID,
