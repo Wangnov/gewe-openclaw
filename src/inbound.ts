@@ -18,6 +18,7 @@ import type { GeweDownloadQueue } from "./download-queue.js";
 import { downloadGeweFile, downloadGeweImage, downloadGeweVideo, downloadGeweVoice } from "./download.js";
 import { deliverGewePayload } from "./delivery.js";
 import { applyGeweReplyModeToPayload, resolveGeweReplyOptions } from "./reply-options.js";
+import { rememberGeweDirectoryObservation } from "./directory-cache.js";
 import { getGeweRuntime } from "./runtime.js";
 import { ensureRustSilkBinary } from "./silk.js";
 import { readGeweAllowFromStore, redeemGewePairCode } from "./pairing-store.js";
@@ -684,6 +685,12 @@ export async function handleGeweInboundBatch(params: {
   }
 
   statusSink?.({ lastInboundAt: Date.now() });
+  rememberGeweDirectoryObservation({
+    accountId: account.accountId,
+    senderId,
+    senderName,
+    groupId,
+  });
 
   const dmPolicy = account.config.dmPolicy ?? "pairing";
   const defaultGroupPolicy = config.channels?.defaults?.groupPolicy;

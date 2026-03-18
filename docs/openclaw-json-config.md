@@ -1517,4 +1517,202 @@ GeWe 群没有 Telegram topic、Feishu thread 这种子会话结构。
 7. 需要时手动同步群身份
    由 owner 调用 `gewe_sync_group_binding` 的 `inspect / dry_run / apply`
 
+## 17. 运行中可直接使用的 GeWe 能力
+
+这一章不是在讲 `openclaw.json` 字段本身，而是在讲：当你已经把 GeWe 配好以后，日常运行时可以直接怎么用。
+
+### 17.1 目录能力
+
+GeWe 现在支持这些目录入口：
+
+- `self`
+- `listPeers`
+- `listGroups`
+- `listGroupMembers`
+
+目录来源是混合的：
+
+- 配置里的 `allowFrom`、`groupAllowFrom`、`dms`、`groups`
+- 顶层 `bindings[]` 里命中的 GeWe 群
+- 运行时见过的私聊对象、群、群成员
+
+其中：
+
+- `listPeers` 适合查“这个账号目前认识哪些私聊对象”
+- `listGroups` 适合查“这个账号目前配置过或见过哪些群”
+- `listGroupMembers` 会 live 调 GeWe `getChatroomInfo`，适合需要群成员名字、群内备注名的时候
+
+### 17.2 标准 `/allowlist` 管什么
+
+标准 `/allowlist` 入口负责顶层两类名单：
+
+- 私聊 allowlist：`allowFrom`
+- 群发言人 allowlist：`groupAllowFrom`
+
+也就是说，如果你在用标准 `/allowlist add/remove`，它改的是：
+
+```json5
+{
+  "channels": {
+    "gewe-openclaw": {
+      "allowFrom": ["wxid_xxx"],
+      "groupAllowFrom": ["wxid_member_xxx"]
+    }
+  }
+}
+```
+
+### 17.3 单群 allowlist 覆盖怎么管
+
+如果你要改的是某一个群自己的：
+
+```json5
+{
+  "channels": {
+    "gewe-openclaw": {
+      "groups": {
+        "room@chatroom": {
+          "allowFrom": ["wxid_a", "wxid_b"]
+        }
+      }
+    }
+  }
+}
+```
+
+请用插件工具：
+
+- `gewe_manage_group_allowlist`
+
+它支持 5 个模式：
+
+- `inspect`
+- `add`
+- `remove`
+- `replace`
+- `clear`
+
+示例 1：查看当前群的生效名单
+
+```json5
+{
+  "mode": "inspect"
+}
+```
+
+如果你就在目标群里执行，工具会自动推断当前群。
+
+示例 2：直接覆盖某个群的局部 allowlist
+
+```json5
+{
+  "mode": "replace",
+  "groupId": "ops-room@chatroom",
+  "entries": ["wxid_admin_1", "wxid_admin_2"]
+}
+```
+
+示例 3：清空某个群的局部覆盖，回退到顶层 `groupAllowFrom`
+
+```json5
+{
+  "mode": "clear",
+  "groupId": "ops-room@chatroom"
+}
+```
+
+`inspect` 返回里你会看到 3 层来源：
+
+- `baseEntries`
+  顶层 `groupAllowFrom`
+- `pairingEntries`
+  pairing 码本地写入的 allow-from
+- `overrideEntries`
+  `groups.<groupId>.allowFrom`
+
+最终结果会合并成 `effectiveEntries`。
+
+### 17.4 状态页现在会显示什么
+
+GeWe 状态摘要现在除了基础的 `configured/running`，还会展示：
+
+- API 是否可达
+- API 探测延迟
+- 当前账号自己的 `wxid` / 昵称
+- 已知私聊对象数
+- 已知群数
+- 已缓存群成员数
+- 显式 `bindings[]` 数量
+- 群局部 allowlist 覆盖数量
+- pairing 本地 allow-from 数量
+
+如果状态页提示：
+
+- API probe failed
+  先检查 `token`、`appId`、`apiBaseUrl`
+- `groupPolicy="open"` but no per-group override
+  表示当前群接入策略偏宽，建议补 `groupAllowFrom` 或 `groups.<groupId>.allowFrom`
+
+### 17.5 共享 `message` 工具里的 GeWe 动作
+
+GeWe 现在在共享 `message` 工具里支持这 3 个动作：
+
+- `send`
+- `reply`
+- `unsend`
+
+并额外支持一个 `gewe` 对象来表达微信专属消息语义。
+
+示例：在当前群里做部分引用回复
+
+```json5
+{
+  "action": "reply",
+  "message": "收到，我接着处理",
+  "gewe": {
+    "quote": {
+      "partialText": "需要继续跟进的那一段"
+    }
+  }
+}
+```
+
+示例：发名片
+
+```json5
+{
+  "action": "send",
+  "to": "wxid_friend",
+  "gewe": {
+    "nameCard": {
+      "nickName": "张三",
+      "nameCardWxid": "wxid_123456"
+    }
+  }
+}
+```
+
+示例：撤回消息
+
+```json5
+{
+  "action": "unsend",
+  "to": "ops-room@chatroom",
+  "messageId": "10001",
+  "newMessageId": "10002",
+  "createTime": "1710000002"
+}
+```
+
+`gewe` 里目前可用的扩展字段有：
+
+- `quote`
+  - `partialText`
+  - `atWxid`
+  - `atSender`
+- `emoji`
+- `nameCard`
+- `miniApp`
+- `forward`
+
 如果你已经有一份 `openclaw.json`，也可以直接把 `channels.gewe-openclaw` 这一段贴出来，我可以继续帮你按你的实际使用场景整理成一份更合适的版本。

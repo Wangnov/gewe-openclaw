@@ -1,6 +1,7 @@
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 
 import { gewePlugin } from "./src/channel.js";
+import { createGeweManageGroupAllowlistTool } from "./src/group-allowlist-tool.js";
 import { createGeweSyncGroupBindingTool } from "./src/group-binding-tool.js";
 import { setGeweRuntime } from "./src/runtime.js";
 
@@ -41,6 +42,12 @@ const plugin = {
     setGeweRuntime(api.runtime);
     api.registerChannel({ plugin: gewePlugin });
     api.registerTool((ctx) => createGeweSyncGroupBindingTool(ctx));
+    api.registerTool((ctx) =>
+      createGeweManageGroupAllowlistTool(ctx, {
+        readConfig: () => api.runtime.config.loadConfig() as never,
+        writeConfigFile: async (next) => await api.runtime.config.writeConfigFile(next),
+      }),
+    );
   },
 };
 

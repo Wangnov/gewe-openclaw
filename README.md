@@ -204,6 +204,69 @@ openclaw onboard
 }
 ```
 
+## 目录、Allowlist 与状态
+
+GeWe 现在补齐了目录、标准 allowlist 适配和状态摘要。
+
+### 目录
+
+目录会混合这些来源：
+
+- `allowFrom`、`groupAllowFrom`、`dms`、`groups`
+- 顶层 `bindings[]` 里命中的 GeWe 群
+- 运行中见过的私聊对象、群、群成员
+
+支持的目录能力：
+
+- `self`：查看当前账号自己的 `wxid` 和昵称
+- `listPeers`：查看已知私聊对象
+- `listGroups`：查看已知群
+- `listGroupMembers`：按需读取某个群的实时成员列表
+
+其中 `listGroupMembers` 会 live 调用 GeWe 的 `getChatroomInfo`，结果也会反哺后续名字解析。
+
+### Allowlist
+
+标准 `/allowlist` 入口负责顶层两类名单：
+
+- 私聊：`allowFrom`
+- 群发言人：`groupAllowFrom`
+
+如果你要管理“某一个群自己的 `groups.<groupId>.allowFrom` 覆盖”，请用插件工具：
+
+- `gewe_manage_group_allowlist`
+
+它支持：
+
+- `inspect`
+- `add`
+- `remove`
+- `replace`
+- `clear`
+
+示例：
+
+```json5
+{
+  "mode": "replace",
+  "groupId": "ops-room@chatroom",
+  "entries": ["wxid_admin_1", "wxid_admin_2"]
+}
+```
+
+如果你就在目标群里调用，`groupId` 可以省略；工具会自动用当前群。
+
+### 状态
+
+GeWe 的状态页现在会额外显示：
+
+- API 是否可达、探测延迟
+- 当前账号自己的 `wxid` / 昵称
+- 已知私聊对象数、已知群数、已缓存群成员数
+- 显式 `bindings[]` 数量
+- 群局部 allowlist 覆盖数量
+- pairing 本地 allow-from 数量
+
 ## 把群绑定到 Agent / ACP
 
 除了 `channels.gewe-openclaw` 这一段插件配置，GeWe 还支持配合 OpenClaw 顶层 `bindings[]` 使用。
@@ -377,6 +440,40 @@ openclaw onboard
 - 公网 URL：先尝试原 URL 发送，失败后再尝试上传 S3，仍失败回退本地反代。
 
 ## 富消息与消息复用
+
+除了直接构造 `channelData["gewe-openclaw"]`，现在也可以通过共享 `message` 工具走标准动作：
+
+- `send`
+- `reply`
+- `unsend`
+
+并在参数里附带一个 `gewe` 对象来表达微信专属语义。
+
+示例：在当前群里回复并做部分引用
+
+```json5
+{
+  "action": "reply",
+  "message": "收到，我接着处理",
+  "gewe": {
+    "quote": {
+      "partialText": "需要继续跟进的那一段"
+    }
+  }
+}
+```
+
+示例：撤回一条已经发出的消息
+
+```json5
+{
+  "action": "unsend",
+  "to": "ops-room@chatroom",
+  "messageId": "10001",
+  "newMessageId": "10002",
+  "createTime": "1710000002"
+}
+```
 
 插件支持通过 `channelData["gewe-openclaw"]` 传入 GeWe 专有消息语义。结构如下：
 

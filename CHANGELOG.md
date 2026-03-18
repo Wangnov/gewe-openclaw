@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2026.3.21] - 2026-03-19
+
+### Added
+
+- GeWe 接入共享 `message` 工具动作，支持 `send`、`reply`、`unsend`，并新增 `gewe` 扩展参数来表达引用、表情、名片、小程序和转发语义。
+- GeWe 通道新增目录能力，支持查看当前账号自身信息、已知私聊对象、已知群，以及按需读取群成员列表。
+- 新增 `gewe_manage_group_allowlist` 工具，用于查看和编辑单群 `allowFrom` 覆盖，支持 `inspect`、`add`、`remove`、`replace`、`clear`。
+
+### Changed
+
+- GeWe 现已接入标准 allowlist 适配，可直接读取和编辑顶层 `allowFrom` / `groupAllowFrom`，并在展示时带出群局部覆盖摘要。
+- GeWe 状态摘要现在包含 API 探活、自身身份、目录规模、显式绑定数量、群覆盖数量和 pairing 本地 allow-from 统计。
+- README 与 `openclaw.json` 配置手册补充了 actions、directory、allowlist、status 的用法示例和操作说明。
+
 ## [2026.3.20] - 2026-03-18
 
 ### Added

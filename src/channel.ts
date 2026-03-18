@@ -13,6 +13,10 @@ import {
 } from "./openclaw-compat.js";
 
 import { resolveGeweAccount, resolveDefaultGeweAccountId, listGeweAccountIds } from "./accounts.js";
+import { geweMessageActions } from "./channel-actions.js";
+import { geweAllowlist } from "./channel-allowlist.js";
+import { geweDirectory } from "./channel-directory.js";
+import { geweStatus } from "./channel-status.js";
 import { GeweConfigSchema } from "./config-schema.js";
 import {
   CHANNEL_ALIASES,
@@ -215,6 +219,7 @@ export const gewePlugin: GeweChannelPlugin<ResolvedGeweAccount> = {
         .filter(Boolean)
         .map((entry) => stripChannelPrefix(entry)),
   },
+  allowlist: geweAllowlist,
   security: {
     resolveDmPolicy: ({ cfg, accountId, account }) => {
       const resolvedAccountId = accountId ?? account.accountId ?? DEFAULT_ACCOUNT_ID;
@@ -289,6 +294,8 @@ export const gewePlugin: GeweChannelPlugin<ResolvedGeweAccount> = {
       hint: "<wxid|@chatroom>",
     },
   },
+  directory: geweDirectory,
+  actions: geweMessageActions,
   outbound: {
     deliveryMode: "direct",
     normalizePayload: ({ payload }) => normalizeGeweOutboundPayload(payload),
@@ -388,36 +395,7 @@ export const gewePlugin: GeweChannelPlugin<ResolvedGeweAccount> = {
       lastStopAt: null,
       lastError: null,
     },
-    buildChannelSummary: ({ snapshot }) => ({
-      configured: snapshot.configured ?? false,
-      tokenSource: snapshot.tokenSource ?? "none",
-      running: snapshot.running ?? false,
-      mode: snapshot.mode ?? null,
-      lastStartAt: snapshot.lastStartAt ?? null,
-      lastStopAt: snapshot.lastStopAt ?? null,
-      lastError: snapshot.lastError ?? null,
-      lastInboundAt: snapshot.lastInboundAt ?? null,
-      lastOutboundAt: snapshot.lastOutboundAt ?? null,
-    }),
-    buildAccountSnapshot: ({ account, runtime }) => {
-      const configured = Boolean(account.token?.trim() && account.appId?.trim());
-      return {
-        accountId: account.accountId,
-        name: account.name,
-        enabled: account.enabled,
-        configured,
-        tokenSource: account.tokenSource,
-        baseUrl: account.config.apiBaseUrl ? "[set]" : "[missing]",
-        running: runtime?.running ?? false,
-        lastStartAt: runtime?.lastStartAt ?? null,
-        lastStopAt: runtime?.lastStopAt ?? null,
-        lastError: runtime?.lastError ?? null,
-        mode: "webhook",
-        lastInboundAt: runtime?.lastInboundAt ?? null,
-        lastOutboundAt: runtime?.lastOutboundAt ?? null,
-        dmPolicy: account.config.dmPolicy ?? "pairing",
-      };
-    },
+    ...geweStatus,
   },
   gateway: {
     startAccount: async (ctx) => {
