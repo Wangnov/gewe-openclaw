@@ -10,7 +10,7 @@ export const DEFAULT_MEDIA_HOST = "0.0.0.0";
 export const DEFAULT_MEDIA_PORT = 18787;
 export const DEFAULT_MEDIA_PATH = "/gewe-media";
 
-function normalizePath(value: string): string {
+export function normalizeMediaPath(value: string): string {
   const trimmed = value.trim() || "/";
   if (trimmed === "/") return "/";
   return trimmed.startsWith("/") ? trimmed.replace(/\/+$/, "") : `/${trimmed.replace(/\/+$/, "")}`;
@@ -38,67 +38,83 @@ export type GeweMediaServerOptions = {
   abortSignal?: AbortSignal;
 };
 
+export async function maybeHandleGeweMediaRequest(params: {
+  req: IncomingMessage;
+  res: ServerResponse;
+  path?: string;
+  mediaBaseDir?: string;
+}): Promise<boolean> {
+  if (!params.req.url) {
+    return false;
+  }
+
+  const basePath = normalizeMediaPath(params.path ?? DEFAULT_MEDIA_PATH);
+  const url = new URL(params.req.url, resolveBaseUrl(params.req));
+  if (!url.pathname.startsWith(`${basePath}/`)) {
+    return false;
+  }
+
+  if (params.req.method !== "GET" && params.req.method !== "HEAD") {
+    params.res.writeHead(405);
+    params.res.end();
+    return true;
+  }
+
+  const id = decodeURIComponent(url.pathname.slice(basePath.length + 1));
+  if (!isSafeMediaId(id)) {
+    params.res.writeHead(400);
+    params.res.end();
+    return true;
+  }
+
+  const mediaBaseDir = params.mediaBaseDir ?? path.join(resolveMediaDir(), "outbound");
+  const filePath = path.join(mediaBaseDir, id);
+  const stat = await fs.stat(filePath).catch(() => null);
+  if (!stat || !stat.isFile()) {
+    params.res.writeHead(404);
+    params.res.end();
+    return true;
+  }
+
+  const contentType = await detectMime({ filePath }).catch(() => undefined);
+  const headers: Record<string, string> = {
+    "Content-Length": String(stat.size),
+    "Cache-Control": "private, max-age=60",
+  };
+  if (contentType) headers["Content-Type"] = contentType;
+
+  params.res.writeHead(200, headers);
+  if (params.req.method === "HEAD") {
+    params.res.end();
+    return true;
+  }
+
+  const stream = createReadStream(filePath);
+  stream.on("error", () => {
+    if (!params.res.headersSent) params.res.writeHead(500);
+    params.res.end();
+  });
+  stream.pipe(params.res);
+  return true;
+}
+
 export function createGeweMediaServer(
   opts: GeweMediaServerOptions,
 ): { server: Server; start: () => Promise<void>; stop: () => void } {
   const host = opts.host ?? DEFAULT_MEDIA_HOST;
   const port = opts.port ?? DEFAULT_MEDIA_PORT;
-  const basePath = normalizePath(opts.path ?? DEFAULT_MEDIA_PATH);
   const mediaBaseDir = path.join(resolveMediaDir(), "outbound");
 
   const server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
-    if (!req.url) {
-      res.writeHead(404);
-      res.end();
-      return;
-    }
-    if (req.method !== "GET" && req.method !== "HEAD") {
-      res.writeHead(405);
-      res.end();
-      return;
-    }
-
-    const url = new URL(req.url, resolveBaseUrl(req));
-    if (!url.pathname.startsWith(`${basePath}/`)) {
-      res.writeHead(404);
-      res.end();
-      return;
-    }
-
-    const id = decodeURIComponent(url.pathname.slice(basePath.length + 1));
-    if (!isSafeMediaId(id)) {
-      res.writeHead(400);
-      res.end();
-      return;
-    }
-
-    const filePath = path.join(mediaBaseDir, id);
-    const stat = await fs.stat(filePath).catch(() => null);
-    if (!stat || !stat.isFile()) {
-      res.writeHead(404);
-      res.end();
-      return;
-    }
-
-    const contentType = await detectMime({ filePath }).catch(() => undefined);
-    const headers: Record<string, string> = {
-      "Content-Length": String(stat.size),
-      "Cache-Control": "private, max-age=60",
-    };
-    if (contentType) headers["Content-Type"] = contentType;
-
-    res.writeHead(200, headers);
-    if (req.method === "HEAD") {
-      res.end();
-      return;
-    }
-
-    const stream = createReadStream(filePath);
-    stream.on("error", () => {
-      if (!res.headersSent) res.writeHead(500);
-      res.end();
+    const handled = await maybeHandleGeweMediaRequest({
+      req,
+      res,
+      path: opts.path,
+      mediaBaseDir,
     });
-    stream.pipe(res);
+    if (handled) return;
+    res.writeHead(404);
+    res.end();
   });
 
   const start = (): Promise<void> =>

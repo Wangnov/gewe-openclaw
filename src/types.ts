@@ -145,6 +145,7 @@ export type GeweWebhookServerOptions = {
   port: number;
   host: string;
   path: string;
+  mediaPath?: string;
   secret?: string;
   onMessage: (message: GeweInboundMessage) => void | Promise<void>;
   onError?: (error: Error) => void;

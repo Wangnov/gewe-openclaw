@@ -13,6 +13,7 @@ import { GeweDownloadQueue } from "./download-queue.js";
 import { createGeweInboundDebouncer } from "./inbound-batch.js";
 import { handleGeweInboundBatch } from "./inbound.js";
 import { createGeweMediaServer, DEFAULT_MEDIA_HOST, DEFAULT_MEDIA_PATH, DEFAULT_MEDIA_PORT } from "./media-server.js";
+import { maybeHandleGeweMediaRequest } from "./media-server.js";
 import { getGeweRuntime } from "./runtime.js";
 import type {
   CoreConfig,
@@ -176,12 +177,23 @@ export function createGeweWebhookServer(opts: GeweWebhookServerOptions): {
   start: () => Promise<void>;
   stop: () => void;
 } {
-  const { port, host, path, secret, onMessage, onError, abortSignal } = opts;
+  const { port, host, path, mediaPath, secret, onMessage, onError, abortSignal } = opts;
 
   const server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
     if (req.url === HEALTH_PATH) {
       res.writeHead(200, { "Content-Type": "text/plain" });
       res.end("ok");
+      return;
+    }
+
+    if (
+      mediaPath &&
+      (await maybeHandleGeweMediaRequest({
+        req,
+        res,
+        path: mediaPath,
+      }))
+    ) {
       return;
     }
 
@@ -312,6 +324,10 @@ export async function monitorGeweProvider(
   const rawPath = account.config.webhookPath?.trim() || DEFAULT_WEBHOOK_PATH;
   const path = rawPath.startsWith("/") ? rawPath : `/${rawPath}`;
   const secret = account.config.webhookSecret?.trim() || undefined;
+  const shouldStartMedia =
+    Boolean(account.config.mediaPublicUrl) ||
+    Boolean(account.config.mediaPort || account.config.mediaHost || account.config.mediaPath);
+  const mediaPath = account.config.mediaPath ?? DEFAULT_MEDIA_PATH;
 
   const downloadQueue = new GeweDownloadQueue({
     minDelayMs: account.config.downloadMinDelayMs,
@@ -338,6 +354,7 @@ export async function monitorGeweProvider(
     port,
     host,
     path,
+    mediaPath: shouldStartMedia ? mediaPath : undefined,
     secret,
     onMessage: async (message) => {
       const isSelf = message.fromId === message.botWxid || message.senderId === message.botWxid;
@@ -363,15 +380,12 @@ export async function monitorGeweProvider(
   runtime.log?.(`[${account.accountId}] GeWe webhook server listening on ${webhookPublicUrl}`);
 
   let mediaStop: (() => void) | undefined;
-  const shouldStartMedia =
-    Boolean(account.config.mediaPublicUrl) ||
-    Boolean(account.config.mediaPort || account.config.mediaHost || account.config.mediaPath);
 
   if (shouldStartMedia) {
     const mediaServer = createGeweMediaServer({
       host: account.config.mediaHost ?? DEFAULT_MEDIA_HOST,
       port: account.config.mediaPort ?? DEFAULT_MEDIA_PORT,
-      path: account.config.mediaPath ?? DEFAULT_MEDIA_PATH,
+      path: mediaPath,
       abortSignal: opts.abortSignal,
     });
     await mediaServer.start();

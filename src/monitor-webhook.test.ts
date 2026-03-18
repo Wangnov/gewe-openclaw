@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { PassThrough } from "node:stream";
 import test from "node:test";
 
@@ -124,4 +127,46 @@ test("GeWe webhook start 在 listen 失败时会 reject", async () => {
     status: "rejected",
     message: "listen failed",
   });
+});
+
+test("GeWe webhook 入口可直接服务 GeWe mediaPath", async () => {
+  const previousStateDir = process.env.OPENCLAW_STATE_DIR;
+  const tempStateDir = await fs.mkdtemp(path.join(os.tmpdir(), "gewe-webhook-media-"));
+  process.env.OPENCLAW_STATE_DIR = tempStateDir;
+
+  try {
+    const mediaDir = path.join(tempStateDir, "media", "outbound");
+    await fs.mkdir(mediaDir, { recursive: true });
+    const mediaId = "voice---test-media";
+    await fs.writeFile(path.join(mediaDir, mediaId), "SILK");
+
+    const { server } = createGeweWebhookServer({
+      port: 0,
+      host: "127.0.0.1",
+      path: "/webhook",
+      mediaPath: "/gewe-media",
+      onMessage: async () => {},
+    });
+
+    const handler = server.listeners("request")[0];
+    assert.equal(typeof handler, "function");
+
+    const req = createRequest({
+      method: "HEAD",
+      url: `/gewe-media/${mediaId}`,
+    });
+    const res = new MockResponse();
+
+    await handler(req as never, res as never);
+
+    assert.equal(res.statusCode, 200);
+    assert.equal(res.headers["Content-Length"] ?? res.headers["content-length"], "4");
+  } finally {
+    if (previousStateDir === undefined) {
+      delete process.env.OPENCLAW_STATE_DIR;
+    } else {
+      process.env.OPENCLAW_STATE_DIR = previousStateDir;
+    }
+    await fs.rm(tempStateDir, { recursive: true, force: true });
+  }
 });
