@@ -115,6 +115,43 @@ openclaw onboard
 - 本地文件：优先上传 S3，失败回退 `mediaPublicUrl` 本地反代。
 - 公网 URL：先尝试原 URL 发送，失败后再尝试上传 S3，仍失败回退本地反代。
 
+## 富消息与消息复用
+
+插件支持通过 `channelData["gewe-openclaw"]` 传入 GeWe 专有消息语义。结构如下：
+
+- `appMsg: { appmsg }`：直接发送 `<appmsg>` XML。
+- `emoji: { emojiMd5, emojiSize }`：发送表情。
+- `nameCard: { nickName, nameCardWxid }`：发送名片。
+- `miniApp: { miniAppId, displayName, pagePath, coverImgUrl, title, userName }`：发送小程序。
+- `revoke: { msgId, newMsgId, createTime }`：撤回指定消息。
+- `forward: { kind, xml, coverImgUrl? }`：复用已存在消息 XML 进行二次转发。
+  - `kind` 支持 `image | video | file | link | miniApp`
+  - `miniApp` 转发额外需要 `coverImgUrl`
+
+示例：
+
+```json
+{
+  "channelData": {
+    "gewe-openclaw": {
+      "forward": {
+        "kind": "link",
+        "xml": "<msg>...</msg>"
+      }
+    }
+  }
+}
+```
+
+入站 `appmsg` 现在会尽量保留复用素材，并在上下文中附带：
+
+- `MsgType`：原始 GeWe `msgType`
+- `GeWeXml`：原始 XML
+- `GeWeAppMsgXml`：`appmsg` XML
+- `GeWeAppMsgType`：`appmsg` 的 `type`
+
+这意味着收到链接、文件通知或其他未专门解析的 `appmsg` 后，可以直接取上下文里的 XML 再走 `forward` / `appMsg` 能力完成复用。
+
 > 配置变更后需重启 Gateway。
 
 ## 高级用法：让未安装插件也出现在 onboarding 列表
