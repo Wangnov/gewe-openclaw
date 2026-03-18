@@ -4,6 +4,9 @@ export type GeweApiResponse<T> = {
   data?: T;
 };
 
+const GEWE_LARGE_ID_FIELD_PATTERN =
+  /("(?:msgId|newMsgId|MsgId|NewMsgId)"\s*:\s*)(-?\d{16,})(?=[,\}])/g;
+
 export function buildGeweUrl(baseUrl: string, path: string): string {
   const base = baseUrl.replace(/\/$/, "");
   const suffix = path.startsWith("/") ? path : `/${path}`;
@@ -16,6 +19,11 @@ async function readResponseText(res: Response): Promise<string> {
   } catch {
     return "";
   }
+}
+
+export function parseGeweJsonText<T>(text: string): T {
+  const normalized = text.replace(GEWE_LARGE_ID_FIELD_PATTERN, '$1"$2"');
+  return JSON.parse(normalized) as T;
 }
 
 export async function postGeweJson<T>(params: {
@@ -40,8 +48,14 @@ export async function postGeweJson<T>(params: {
     throw new Error(`GeWe API request failed (${res.status})${detail}`);
   }
 
-  const json = (await res.json()) as GeweApiResponse<T>;
-  return json;
+  const text = await readResponseText(res);
+  try {
+    return parseGeweJsonText<GeweApiResponse<T>>(text);
+  } catch (error) {
+    const detail = text ? `: ${text}` : "";
+    const reason = error instanceof Error ? error.message : String(error);
+    throw new Error(`GeWe API returned invalid JSON (${reason})${detail}`);
+  }
 }
 
 export function assertGeweOk<T>(resp: GeweApiResponse<T>, context: string): T | undefined {

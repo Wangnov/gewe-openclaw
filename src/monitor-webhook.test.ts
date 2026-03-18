@@ -170,3 +170,48 @@ test("GeWe webhook 入口可直接服务 GeWe mediaPath", async () => {
     await fs.rm(tempStateDir, { recursive: true, force: true });
   }
 });
+
+test("GeWe webhook 会保留大整数 NewMsgId 的原始精度", async () => {
+  let received:
+    | {
+        messageId: string;
+        newMessageId: string;
+      }
+    | undefined;
+
+  const { server } = createGeweWebhookServer({
+    port: 0,
+    host: "127.0.0.1",
+    path: "/webhook",
+    onMessage: async (message) => {
+      received = {
+        messageId: message.messageId,
+        newMessageId: message.newMessageId,
+      };
+    },
+  });
+
+  const handler = server.listeners("request")[0];
+  assert.equal(typeof handler, "function");
+
+  const req = createRequest({
+    method: "POST",
+    url: "/webhook",
+    headers: {
+      "content-type": "application/json",
+    },
+  });
+  const res = new MockResponse();
+
+  const handling = handler(req as never, res as never);
+  req.end(
+    '{"Appid":"app-1","Wxid":"wxid_bot","Data":{"MsgId":1889022455,"NewMsgId":208008054840614808,"FromUserName":{"string":"wxid_sender"},"ToUserName":{"string":"wxid_bot"},"MsgType":1,"Content":{"string":"hello"},"CreateTime":1773809354}}',
+  );
+  await handling;
+
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(received, {
+    messageId: "1889022455",
+    newMessageId: "208008054840614808",
+  });
+});

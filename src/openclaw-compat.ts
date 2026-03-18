@@ -832,7 +832,7 @@ export async function readJsonBodyWithLimit(
   req: IncomingMessage,
   options: { maxBytes: number; timeoutMs?: number; emptyObjectOnEmpty?: boolean },
 ): Promise<
-  | { ok: true; value: unknown }
+  | { ok: true; value: unknown; raw: string }
   | { ok: false; error: string; code: RequestBodyLimitErrorCode | "INVALID_JSON" }
 > {
   try {
@@ -842,10 +842,10 @@ export async function readJsonBodyWithLimit(
       if (options.emptyObjectOnEmpty === false) {
         return { ok: false, code: "INVALID_JSON", error: "empty payload" };
       }
-      return { ok: true, value: {} };
+      return { ok: true, value: {}, raw: trimmed };
     }
     try {
-      return { ok: true, value: JSON.parse(trimmed) as unknown };
+      return { ok: true, value: JSON.parse(trimmed) as unknown, raw: trimmed };
     } catch (error) {
       return {
         ok: false,

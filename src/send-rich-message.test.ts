@@ -66,6 +66,29 @@ async function withMockFetch<T>(
   }
 }
 
+async function withMockFetchBody<T>(
+  responseBody: string,
+  fn: (calls: Array<{ url: string; init?: RequestInit }>) => Promise<T>,
+) {
+  const originalFetch = globalThis.fetch;
+  const calls: Array<{ url: string; init?: RequestInit }> = [];
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    calls.push({
+      url: String(input),
+      init,
+    });
+    return new Response(responseBody, {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  }) as typeof fetch;
+  try {
+    return await fn(calls);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}
+
 test("sendAppMsgGewe 会向 GeWe postAppMsg 发送 appmsg", async () => {
   installRuntime();
   const sendModule = (await import("./send.ts")) as {
@@ -98,6 +121,75 @@ test("sendAppMsgGewe 会向 GeWe postAppMsg 发送 appmsg", async () => {
       appmsg: "<appmsg><title>引用消息</title></appmsg>",
     });
   });
+});
+
+test("sendTextGewe 会保留原始 msgId 供后续撤回复用", async () => {
+  installRuntime();
+  const sendModule = (await import("./send.ts")) as {
+    sendTextGewe?: (params: {
+      account: ResolvedGeweAccount;
+      toWxid: string;
+      content: string;
+    }) => Promise<{
+      messageId: string;
+      newMessageId?: string;
+      timestamp?: number;
+      toWxid: string;
+    }>;
+  };
+
+  assert.equal(typeof sendModule.sendTextGewe, "function");
+
+  await withMockFetch(async () => {
+    const result = await sendModule.sendTextGewe?.({
+      account: createAccount(),
+      toWxid: "wxid_target",
+      content: "revoke-me",
+    });
+
+    assert.deepEqual(result, {
+      toWxid: "wxid_target",
+      messageId: "msg-rich-1",
+      newMessageId: "msg-rich-2",
+      timestamp: 1000,
+    });
+  });
+});
+
+test("sendTextGewe 会保留大整数 newMsgId 的原始精度", async () => {
+  installRuntime();
+  const sendModule = (await import("./send.ts")) as {
+    sendTextGewe?: (params: {
+      account: ResolvedGeweAccount;
+      toWxid: string;
+      content: string;
+    }) => Promise<{
+      messageId: string;
+      newMessageId?: string;
+      timestamp?: number;
+      toWxid: string;
+    }>;
+  };
+
+  assert.equal(typeof sendModule.sendTextGewe, "function");
+
+  await withMockFetchBody(
+    '{"ret":200,"msg":"ok","data":{"msgId":1889022455,"newMsgId":208008054840614808,"createTime":1}}',
+    async () => {
+      const result = await sendModule.sendTextGewe?.({
+        account: createAccount(),
+        toWxid: "wxid_target",
+        content: "precision-check",
+      });
+
+      assert.deepEqual(result, {
+        toWxid: "wxid_target",
+        messageId: "1889022455",
+        newMessageId: "208008054840614808",
+        timestamp: 1000,
+      });
+    },
+  );
 });
 
 test("deliverGewePayload 在 appMsg 存在时会优先发送 GeWe 富消息", async () => {

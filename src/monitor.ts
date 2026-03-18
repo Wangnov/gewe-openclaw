@@ -9,6 +9,7 @@ import {
 } from "./openclaw-compat.js";
 
 import { resolveGeweAccount } from "./accounts.js";
+import { parseGeweJsonText } from "./api.js";
 import { GeweDownloadQueue } from "./download-queue.js";
 import { createGeweInboundDebouncer } from "./inbound-batch.js";
 import { handleGeweInboundBatch } from "./inbound.js";
@@ -127,7 +128,7 @@ function resolveSenderName(pushContent?: string): string | undefined {
 
 function parseWebhookPayload(body: string): GeweCallbackPayload | null {
   try {
-    const data = JSON.parse(body);
+    const data = parseGeweJsonText<GeweCallbackPayload>(body);
     return data as GeweCallbackPayload;
   } catch {
     return null;
@@ -229,7 +230,7 @@ export function createGeweWebhookServer(opts: GeweWebhookServerOptions): {
         return;
       }
 
-      const payload = parseWebhookPayload(JSON.stringify(bodyResult.value));
+      const payload = parseWebhookPayload(bodyResult.raw);
       if (!payload) {
         res.writeHead(400, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ error: "Invalid JSON payload" }));

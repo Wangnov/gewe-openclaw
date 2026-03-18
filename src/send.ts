@@ -22,7 +22,7 @@ function resolveSendResult(params: {
   toWxid: string;
   data?: GeweSendResponseData;
 }): GeweSendResult {
-  const msgId = params.data?.newMsgId ?? params.data?.msgId ?? "ok";
+  const msgId = params.data?.msgId ?? params.data?.newMsgId ?? "ok";
   const createTime = params.data?.createTime;
   return {
     toWxid: params.toWxid,

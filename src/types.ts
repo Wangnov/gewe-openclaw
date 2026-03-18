@@ -114,8 +114,8 @@ export type GeweCallbackPayload = {
   Appid?: string;
   Wxid?: string;
   Data?: {
-    MsgId?: number;
-    NewMsgId?: number;
+    MsgId?: number | string;
+    NewMsgId?: number | string;
     FromUserName?: { string?: string };
     ToUserName?: { string?: string };
     MsgType?: number;
