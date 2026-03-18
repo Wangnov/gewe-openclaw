@@ -7,3 +7,24 @@ test("GeWe outbound 暴露默认 textChunkLimit 供宿主应用 chunk 配置", (
   assert.equal(gewePlugin.outbound?.textChunkLimit, 4000);
   assert.equal(gewePlugin.outbound?.chunkerMode, "markdown");
 });
+
+test("GeWe outbound 会为 audioAsVoice 媒体补上 channelData 以保留语音发送语义", () => {
+  const normalized = gewePlugin.outbound?.normalizePayload?.({
+    payload: {
+      text: "caption",
+      mediaUrl: "/tmp/voice.wav",
+      audioAsVoice: true,
+    },
+  });
+
+  assert.deepEqual(normalized, {
+    text: "caption",
+    mediaUrl: "/tmp/voice.wav",
+    audioAsVoice: true,
+    channelData: {
+      "gewe-openclaw": {
+        audioAsVoice: true,
+      },
+    },
+  });
+});

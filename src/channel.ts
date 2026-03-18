@@ -9,6 +9,7 @@ import {
   setAccountEnabledInConfigSection,
   type OpenClawConfig,
   type ChannelSetupInput,
+  type ReplyPayload,
 } from "./openclaw-compat.js";
 
 import { resolveGeweAccount, resolveDefaultGeweAccountId, listGeweAccountIds } from "./accounts.js";
@@ -51,6 +52,41 @@ type GeweSetupInput = ChannelSetupInput & {
   appIdFile?: string;
   apiBaseUrl?: string;
 };
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  return value as Record<string, unknown>;
+}
+
+function payloadHasMedia(payload: ReplyPayload): boolean {
+  if (payload.mediaUrl?.trim()) return true;
+  return Boolean(payload.mediaUrls?.some((entry) => entry?.trim()));
+}
+
+function normalizeGeweOutboundPayload(payload: ReplyPayload): ReplyPayload {
+  if (payload.audioAsVoice !== true || !payloadHasMedia(payload)) {
+    return payload;
+  }
+
+  const channelData = asRecord(payload.channelData) ?? {};
+  const existingChannelScoped = asRecord(channelData[CHANNEL_ID]);
+  const existingLegacyScoped = asRecord(channelData.gewe);
+  const targetKey = existingChannelScoped ? CHANNEL_ID : existingLegacyScoped ? "gewe" : CHANNEL_ID;
+  const scoped = existingChannelScoped ?? existingLegacyScoped ?? {};
+
+  return {
+    ...payload,
+    channelData: {
+      ...channelData,
+      [targetKey]: {
+        ...scoped,
+        audioAsVoice: true,
+      },
+    },
+  };
+}
 
 const gewePairing = {
   idLabel: "wechatUserId",
@@ -178,6 +214,7 @@ export const gewePlugin: GeweChannelPlugin<ResolvedGeweAccount> = {
   },
   outbound: {
     deliveryMode: "direct",
+    normalizePayload: ({ payload }) => normalizeGeweOutboundPayload(payload),
     chunker: (text, limit) => {
       const core = getGeweRuntime();
       return core.channel.text.chunkMarkdownText(text, limit);
