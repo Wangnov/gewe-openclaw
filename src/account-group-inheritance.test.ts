@@ -9,6 +9,14 @@ function createConfig(): CoreConfig {
   return {
     channels: {
       "gewe-openclaw": {
+        dms: {
+          "*": {
+            skills: ["shared-dm-skill"],
+            reply: {
+              mode: "quote_source",
+            },
+          },
+        },
         groups: {
           "*": {
             skills: ["shared-skill"],
@@ -19,6 +27,13 @@ function createConfig(): CoreConfig {
         },
         accounts: {
           "acct-1": {
+            dms: {
+              "wxid_friend": {
+                trigger: {
+                  mode: "quote",
+                },
+              },
+            },
             groups: {
               "room@chatroom": {
                 requireMention: false,
@@ -46,6 +61,27 @@ test("GeWe 命名账号会继承顶层 groups 默认配置", () => {
     },
     "room@chatroom": {
       requireMention: false,
+    },
+  });
+});
+
+test("GeWe 命名账号会继承顶层 dms 默认配置", () => {
+  const account = resolveGeweAccount({
+    cfg: createConfig(),
+    accountId: "acct-1",
+  });
+
+  assert.deepEqual(account.config.dms, {
+    "*": {
+      skills: ["shared-dm-skill"],
+      reply: {
+        mode: "quote_source",
+      },
+    },
+    "wxid_friend": {
+      trigger: {
+        mode: "quote",
+      },
     },
   });
 });

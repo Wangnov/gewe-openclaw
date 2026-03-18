@@ -48,6 +48,8 @@ openclaw onboard
 
 直接编辑 `~/.openclaw/openclaw.json` 的 `channels.gewe-openclaw` 段落（见下方示例）。
 
+完整配置手册见：[docs/openclaw-json-config.md](docs/openclaw-json-config.md)
+
 ## 配置
 
 插件配置放在 `~/.openclaw/openclaw.json` 的 `channels.gewe-openclaw`，并确保通道开启（示例仅保留必填/常用字段）：
@@ -111,6 +113,96 @@ openclaw onboard
 - `mediaMaxMb`：上传媒体大小上限（默认 20MB）。
 - `downloadMinDelayMs`/`downloadMaxDelayMs`：入站媒体下载节流。
 - `autoQuoteReply`：是否开启 `replyToId + 纯文本` 自动引用回复（默认开启；设为 `false` 可关闭）。
+
+## 群聊/私聊触发与回复规则
+
+`groups` 和 `dms` 都支持 `*` 默认项 + 精确项覆写：
+
+- `groups["*"]` / `groups["<roomId>@chatroom"]`
+- `dms["*"]` / `dms["<wxid>"]`
+
+局部规则可继续搭配既有字段一起使用，例如 `allowFrom`、`skills`、`systemPrompt`、`tools`（仅群聊）。
+
+### 群聊触发
+
+`groups[*].trigger.mode` 支持：
+
+- `at`：只有被 `@` 时触发
+- `quote`：只有引用机器人消息时触发
+- `at_or_quote`：`@` 或引用机器人消息都触发
+- `any_message`：任何消息都触发
+
+群聊默认值是 `at`。
+
+### 群聊回复
+
+`groups[*].reply.mode` 支持：
+
+- `plain`：普通回复
+- `quote_source`：首条回复自动引用当前入站消息
+- `at_sender`：首条文本回复自动 `@` 发送者
+- `quote_and_at`：首条文本回复同时引用并 `@`；非文本回复会自动退化为 `quote_source`
+
+群聊默认值会跟随 `autoQuoteReply`：
+
+- 未配置或为 `true`：默认 `quote_source`
+- 显式设为 `false`：默认 `plain`
+
+### 私聊触发与回复
+
+`dms[*].trigger.mode` 支持：
+
+- `any_message`
+- `quote`
+
+`dms[*].reply.mode` 支持：
+
+- `plain`
+- `quote_source`
+
+私聊默认触发是 `any_message`。私聊默认回复也会跟随 `autoQuoteReply` 回退到 `quote_source` 或 `plain`。
+
+### 兼容旧配置
+
+- `requireMention: true/false` 仍然可用，会分别映射到群聊 `trigger.mode = "at"` / `"any_message"`
+- 新的 `trigger` / `reply` 配置优先级更高
+- `autoQuoteReply` 现在主要用于“未显式配置 `reply.mode` 时”的默认值回退
+
+示例：
+
+```json5
+{
+  "channels": {
+    "gewe-openclaw": {
+      "groupPolicy": "open",
+      "groups": {
+        "*": {
+          "trigger": { "mode": "at" },
+          "reply": { "mode": "quote_source" }
+        },
+        "project-room@chatroom": {
+          "trigger": { "mode": "at_or_quote" },
+          "reply": { "mode": "quote_and_at" },
+          "skills": ["project-skill"]
+        },
+        "ops-room@chatroom": {
+          "trigger": { "mode": "any_message" },
+          "reply": { "mode": "plain" }
+        }
+      },
+      "dms": {
+        "*": {
+          "reply": { "mode": "quote_source" }
+        },
+        "wxid_special": {
+          "trigger": { "mode": "quote" },
+          "systemPrompt": "Only handle quoted follow-ups."
+        }
+      }
+    }
+  }
+}
+```
 
 发送媒体时的 URL 策略：
 - 本地文件：优先上传 S3，失败回退 `mediaPublicUrl` 本地反代。

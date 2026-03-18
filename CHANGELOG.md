@@ -2,6 +2,27 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2026.3.19] - 2026-03-18
+
+### Added
+
+- GeWe 群聊与私聊规则配置新增 `trigger.mode` / `reply.mode`，支持按 `groups`、`dms`、`*` 默认项与账号级配置组合覆写。
+- 群聊触发规则支持 `at`、`quote`、`at_or_quote`、`any_message`；私聊触发规则支持 `any_message`、`quote`。
+- 群聊回复规则支持 `plain`、`quote_source`、`at_sender`、`quote_and_at`；私聊回复规则支持 `plain`、`quote_source`。
+- 新增完整的 `openclaw.json` 配置手册，覆盖顶层、账号级、群聊、私聊、多账号、媒体与安全配置说明。
+
+### Changed
+
+- GeWe 文档与提示文案统一改用 `at` 术语，不再使用 `mention` 作为面对用户的配置描述。
+- 命名账号现在会继承并合并顶层 `dms` 默认配置，和现有 `groups` 继承行为保持一致。
+- `autoQuoteReply` 现在作为未显式配置 `reply.mode` 时的默认回退，而不是唯一的引用回复开关。
+
+### Fixed
+
+- 修复群聊触发判断只能基于 `@` 的限制，引用机器人消息现在可按规则参与触发。
+- 修复私聊局部规则无法透传 `skills` / `systemPrompt` 与无法按 `dms` wildcard 覆写的问题。
+- 修复 `quote_and_at` 在非文本回复上的行为，现会安全退化为 `quote_source`。
+
 ## [2026.3.18] - 2026-03-18
 
 ### Added

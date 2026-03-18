@@ -9,16 +9,49 @@ import {
 } from "./openclaw-compat.js";
 import { z } from "zod";
 
+const GeweGroupTriggerSchema = z
+  .object({
+    mode: z.enum(["at", "quote", "at_or_quote", "any_message"]).optional(),
+  })
+  .strict();
+
+const GeweDmTriggerSchema = z
+  .object({
+    mode: z.enum(["any_message", "quote"]).optional(),
+  })
+  .strict();
+
+const GeweGroupReplySchema = z
+  .object({
+    mode: z.enum(["plain", "quote_source", "at_sender", "quote_and_at"]).optional(),
+  })
+  .strict();
+
+const GeweDmReplySchema = z
+  .object({
+    mode: z.enum(["plain", "quote_source"]).optional(),
+  })
+  .strict();
+
 export const GeweGroupSchema = z
   .object({
     requireMention: z.boolean().optional(),
-    tools: ToolPolicySchema,
+    tools: ToolPolicySchema.optional(),
     skills: z.array(z.string()).optional(),
     enabled: z.boolean().optional(),
     allowFrom: z.array(z.string()).optional(),
     systemPrompt: z.string().optional(),
+    trigger: GeweGroupTriggerSchema.optional(),
+    reply: GeweGroupReplySchema.optional(),
   })
   .strict();
+
+export const GeweDmSchema = DmConfigSchema.extend({
+  skills: z.array(z.string()).optional(),
+  systemPrompt: z.string().optional(),
+  trigger: GeweDmTriggerSchema.optional(),
+  reply: GeweDmReplySchema.optional(),
+}).strict();
 
 export const GeweAccountSchemaBase = z
   .object({
@@ -80,7 +113,7 @@ export const GeweAccountSchemaBase = z
     groups: z.record(z.string(), GeweGroupSchema.optional()).optional(),
     historyLimit: z.number().int().min(0).optional(),
     dmHistoryLimit: z.number().int().min(0).optional(),
-    dms: z.record(z.string(), DmConfigSchema.optional()).optional(),
+    dms: z.record(z.string(), GeweDmSchema.optional()).optional(),
     textChunkLimit: z.number().int().positive().optional(),
     chunkMode: z.enum(["length", "newline"]).optional(),
     autoQuoteReply: z.boolean().optional(),

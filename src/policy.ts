@@ -5,13 +5,19 @@ import {
   type GroupPolicy,
   normalizeChannelSlug,
   resolveChannelEntryMatchWithFallback,
-  resolveMentionGatingWithBypass,
   resolveNestedAllowlistDecision,
 } from "./openclaw-compat.js";
 
 import { mergeGeweGroups } from "./accounts.js";
 import { CHANNEL_CONFIG_KEY, CHANNEL_PREFIX_REGEX } from "./constants.js";
-import type { GeweGroupConfig } from "./types.js";
+import type {
+  GeweDmConfig,
+  GeweDmReplyMode,
+  GeweDmTriggerMode,
+  GeweGroupConfig,
+  GeweGroupReplyMode,
+  GeweGroupTriggerMode,
+} from "./types.js";
 
 function normalizeAllowEntry(raw: string): string {
   return raw.trim().toLowerCase().replace(CHANNEL_PREFIX_REGEX, "");
@@ -51,6 +57,13 @@ export type GeweGroupMatch = {
   allowlistConfigured: boolean;
 };
 
+export type GeweDmMatch = {
+  dmConfig?: GeweDmConfig;
+  wildcardConfig?: GeweDmConfig;
+  dmKey?: string;
+  matchSource?: "direct" | "parent" | "wildcard";
+};
+
 export function resolveGeweGroupMatch(params: {
   groups?: Record<string, GeweGroupConfig>;
   groupId: string;
@@ -88,6 +101,33 @@ export function resolveGeweGroupMatch(params: {
   };
 }
 
+export function resolveGeweDmMatch(params: {
+  dms?: Record<string, GeweDmConfig>;
+  senderId: string;
+  senderName?: string | null;
+}): GeweDmMatch {
+  const dms = params.dms ?? {};
+  const senderName = params.senderName?.trim() || undefined;
+  const candidates = buildChannelKeyCandidates(
+    params.senderId,
+    senderName,
+    senderName ? normalizeChannelSlug(senderName) : undefined,
+  );
+  const match = resolveChannelEntryMatchWithFallback({
+    entries: dms,
+    keys: candidates,
+    wildcardKey: "*",
+    normalizeKey: normalizeChannelSlug,
+  });
+
+  return {
+    dmConfig: match.entry,
+    wildcardConfig: match.wildcardEntry,
+    dmKey: match.matchKey ?? match.key,
+    matchSource: match.matchSource,
+  };
+}
+
 export function resolveGeweGroupToolPolicy(
   params: ChannelGroupContext,
 ): GeweGroupConfig["tools"] | undefined {
@@ -120,13 +160,57 @@ export function resolveGeweRequireMention(params: {
   groupConfig?: GeweGroupConfig;
   wildcardConfig?: GeweGroupConfig;
 }): boolean {
+  const triggerMode = resolveGeweGroupTriggerMode(params);
+  return triggerMode === "at" || triggerMode === "at_or_quote";
+}
+
+export function resolveGeweGroupTriggerMode(params: {
+  groupConfig?: GeweGroupConfig;
+  wildcardConfig?: GeweGroupConfig;
+}): GeweGroupTriggerMode {
+  const configuredMode =
+    params.groupConfig?.trigger?.mode ?? params.wildcardConfig?.trigger?.mode;
+  if (configuredMode) {
+    return configuredMode;
+  }
   if (typeof params.groupConfig?.requireMention === "boolean") {
-    return params.groupConfig.requireMention;
+    return params.groupConfig.requireMention ? "at" : "any_message";
   }
   if (typeof params.wildcardConfig?.requireMention === "boolean") {
-    return params.wildcardConfig.requireMention;
+    return params.wildcardConfig.requireMention ? "at" : "any_message";
   }
-  return true;
+  return "at";
+}
+
+export function resolveGeweDmTriggerMode(params: {
+  dmConfig?: GeweDmConfig;
+  wildcardConfig?: GeweDmConfig;
+}): GeweDmTriggerMode {
+  return params.dmConfig?.trigger?.mode ?? params.wildcardConfig?.trigger?.mode ?? "any_message";
+}
+
+export function resolveGeweGroupReplyMode(params: {
+  groupConfig?: GeweGroupConfig;
+  wildcardConfig?: GeweGroupConfig;
+  autoQuoteReply?: boolean;
+}): GeweGroupReplyMode {
+  return (
+    params.groupConfig?.reply?.mode ??
+    params.wildcardConfig?.reply?.mode ??
+    (params.autoQuoteReply === false ? "plain" : "quote_source")
+  );
+}
+
+export function resolveGeweDmReplyMode(params: {
+  dmConfig?: GeweDmConfig;
+  wildcardConfig?: GeweDmConfig;
+  autoQuoteReply?: boolean;
+}): GeweDmReplyMode {
+  return (
+    params.dmConfig?.reply?.mode ??
+    params.wildcardConfig?.reply?.mode ??
+    (params.autoQuoteReply === false ? "plain" : "quote_source")
+  );
 }
 
 export function resolveGeweGroupAllow(params: {
@@ -169,22 +253,42 @@ export function resolveGeweGroupAllow(params: {
   return { allowed, outerMatch, innerMatch };
 }
 
-export function resolveGeweMentionGate(params: {
+export function resolveGeweTriggerGate(params: {
   isGroup: boolean;
-  requireMention: boolean;
-  wasMentioned: boolean;
+  triggerMode: GeweGroupTriggerMode | GeweDmTriggerMode;
+  wasAtTriggered: boolean;
+  wasQuoteTriggered: boolean;
   allowTextCommands: boolean;
   hasControlCommand: boolean;
   commandAuthorized: boolean;
-}): { shouldSkip: boolean; shouldBypassMention: boolean } {
-  const result = resolveMentionGatingWithBypass({
-    isGroup: params.isGroup,
-    requireMention: params.requireMention,
-    canDetectMention: true,
-    wasMentioned: params.wasMentioned,
-    allowTextCommands: params.allowTextCommands,
-    hasControlCommand: params.hasControlCommand,
-    commandAuthorized: params.commandAuthorized,
-  });
-  return { shouldSkip: result.shouldSkip, shouldBypassMention: result.shouldBypassMention };
+}): { shouldSkip: boolean; shouldBypassTrigger: boolean } {
+  const shouldBypassTrigger =
+    params.isGroup &&
+    params.allowTextCommands &&
+    params.hasControlCommand &&
+    params.commandAuthorized;
+  if (shouldBypassTrigger) {
+    return { shouldSkip: false, shouldBypassTrigger: true };
+  }
+
+  let matched = false;
+  switch (params.triggerMode) {
+    case "at":
+      matched = params.wasAtTriggered;
+      break;
+    case "quote":
+      matched = params.wasQuoteTriggered;
+      break;
+    case "at_or_quote":
+      matched = params.wasAtTriggered || params.wasQuoteTriggered;
+      break;
+    case "any_message":
+      matched = true;
+      break;
+    default:
+      matched = false;
+      break;
+  }
+
+  return { shouldSkip: !matched, shouldBypassTrigger: false };
 }

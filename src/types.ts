@@ -7,6 +7,27 @@ import type {
   OpenClawConfig,
 } from "./openclaw-compat.js";
 
+export type GeweGroupTriggerMode = "at" | "quote" | "at_or_quote" | "any_message";
+export type GeweDmTriggerMode = "any_message" | "quote";
+export type GeweGroupReplyMode = "plain" | "quote_source" | "at_sender" | "quote_and_at";
+export type GeweDmReplyMode = "plain" | "quote_source";
+
+export type GeweGroupTriggerConfig = {
+  mode?: GeweGroupTriggerMode;
+};
+
+export type GeweDmTriggerConfig = {
+  mode?: GeweDmTriggerMode;
+};
+
+export type GeweGroupReplyConfig = {
+  mode?: GeweGroupReplyMode;
+};
+
+export type GeweDmReplyConfig = {
+  mode?: GeweDmReplyMode;
+};
+
 export type GeweGroupConfig = {
   requireMention?: boolean;
   tools?: GroupToolPolicyConfig;
@@ -14,6 +35,15 @@ export type GeweGroupConfig = {
   enabled?: boolean;
   allowFrom?: string[];
   systemPrompt?: string;
+  trigger?: GeweGroupTriggerConfig;
+  reply?: GeweGroupReplyConfig;
+};
+
+export type GeweDmConfig = DmConfig & {
+  skills?: string[];
+  systemPrompt?: string;
+  trigger?: GeweDmTriggerConfig;
+  reply?: GeweDmReplyConfig;
 };
 
 export type GeweAccountConfig = {
@@ -74,7 +104,7 @@ export type GeweAccountConfig = {
   groups?: Record<string, GeweGroupConfig>;
   historyLimit?: number;
   dmHistoryLimit?: number;
-  dms?: Record<string, DmConfig>;
+  dms?: Record<string, GeweDmConfig>;
   textChunkLimit?: number;
   chunkMode?: "length" | "newline";
   autoQuoteReply?: boolean;

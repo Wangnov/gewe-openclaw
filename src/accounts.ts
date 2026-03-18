@@ -40,6 +40,17 @@ export function mergeGeweGroups(
   return Object.keys(merged).length > 0 ? merged : undefined;
 }
 
+export function mergeGeweDms(
+  baseDms?: GeweAccountConfig["dms"],
+  accountDms?: GeweAccountConfig["dms"],
+): GeweAccountConfig["dms"] | undefined {
+  const merged = { ...(baseDms ?? {}) };
+  for (const [key, value] of Object.entries(accountDms ?? {})) {
+    merged[key] = merged[key] ? { ...merged[key], ...value } : value;
+  }
+  return Object.keys(merged).length > 0 ? merged : undefined;
+}
+
 function hasTopLevelDefaultAccount(cfg: CoreConfig): boolean {
   const section = cfg.channels?.[CHANNEL_CONFIG_KEY];
   const hasEnvCredentials = Boolean(
@@ -86,6 +97,10 @@ function mergeGeweAccountConfig(cfg: CoreConfig, accountId: string): GeweAccount
   const groups = mergeGeweGroups(base.groups, account.groups);
   if (groups) {
     merged.groups = groups;
+  }
+  const dms = mergeGeweDms(base.dms, account.dms);
+  if (dms) {
+    merged.dms = dms;
   }
   return merged;
 }

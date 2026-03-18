@@ -279,3 +279,54 @@ test("GeWe 部分引用会透传片段元数据并优先展示片段正文", asy
   );
   assert.equal(capture.dispatches[0]?.ctx.GeWeQuotePartialText, "你好啊");
 });
+
+test("GeWe DM wildcard 规则会向 replyOptions 透传 skills 并附带 systemPrompt", async () => {
+  const capture = {
+    dispatches: [] as Array<{ ctx: Record<string, unknown>; replyOptions: Record<string, unknown> }>,
+  };
+  installRuntime(capture);
+
+  await handleGeweInboundBatch({
+    messages: [createMessage({ msgType: 1, text: "hello" })],
+    account: createAccount({
+      dmPolicy: "open",
+      dms: {
+        "*": {
+          skills: ["alpha-skill"],
+          systemPrompt: "  Use alpha  ",
+        },
+      },
+    }),
+    config: {} as CoreConfig,
+    runtime: TEST_RUNTIME,
+    downloadQueue: new GeweDownloadQueue({ minDelayMs: 0, maxDelayMs: 0 }),
+  });
+
+  assert.equal(capture.dispatches.length, 1);
+  assert.deepEqual(capture.dispatches[0]?.replyOptions.skillFilter, ["alpha-skill"]);
+  assert.equal(capture.dispatches[0]?.ctx.GroupSystemPrompt, "Use alpha");
+});
+
+test("GeWe DM trigger.mode=quote 会阻止普通文本消息分发", async () => {
+  const capture = {
+    dispatches: [] as Array<{ ctx: Record<string, unknown>; replyOptions: Record<string, unknown> }>,
+  };
+  installRuntime(capture);
+
+  await handleGeweInboundBatch({
+    messages: [createMessage({ msgType: 1, text: "hello" })],
+    account: createAccount({
+      dmPolicy: "open",
+      dms: {
+        "*": {
+          trigger: { mode: "quote" },
+        },
+      },
+    }),
+    config: {} as CoreConfig,
+    runtime: TEST_RUNTIME,
+    downloadQueue: new GeweDownloadQueue({ minDelayMs: 0, maxDelayMs: 0 }),
+  });
+
+  assert.equal(capture.dispatches.length, 0);
+});

@@ -177,3 +177,81 @@ test("GeWe wildcard 组配置的 allowFrom 会参与群发送者校验", async (
 
   assert.equal(capture.dispatches.length, 1);
 });
+
+test("GeWe 群 trigger.mode=quote 仅在引用机器人消息时触发", async () => {
+  const capture = { dispatches: [] as Array<{ ctx: Record<string, unknown>; replyOptions: Record<string, unknown> }> };
+  installRuntime(capture);
+  const xml = [
+    "<?xml version=\"1.0\"?>",
+    "<msg>",
+    "<appmsg appid=\"\" sdkver=\"0\">",
+    "<title>回复内容</title>",
+    "<type>57</type>",
+    "<refermsg>",
+    "<type>1</type>",
+    "<svrid>3617029648443513152</svrid>",
+    "<fromusr>wxid_bot</fromusr>",
+    "<chatusr>room@chatroom</chatusr>",
+    "<displayname>GeWe Bot</displayname>",
+    "<content>原始文本</content>",
+    "</refermsg>",
+    "</appmsg>",
+    "</msg>",
+  ].join("");
+
+  await handleGeweInboundBatch({
+    messages: [createMessage({ msgType: 49, xml })],
+    account: createAccount({
+      groupPolicy: "open",
+      groups: {
+        "room@chatroom": {
+          trigger: { mode: "quote" },
+        },
+      },
+    }),
+    config: {} as CoreConfig,
+    runtime: TEST_RUNTIME,
+    downloadQueue: new GeweDownloadQueue({ minDelayMs: 0, maxDelayMs: 0 }),
+  });
+
+  assert.equal(capture.dispatches.length, 1);
+});
+
+test("GeWe 群 trigger.mode=quote 不会因引用其他成员消息而触发", async () => {
+  const capture = { dispatches: [] as Array<{ ctx: Record<string, unknown>; replyOptions: Record<string, unknown> }> };
+  installRuntime(capture);
+  const xml = [
+    "<?xml version=\"1.0\"?>",
+    "<msg>",
+    "<appmsg appid=\"\" sdkver=\"0\">",
+    "<title>回复内容</title>",
+    "<type>57</type>",
+    "<refermsg>",
+    "<type>1</type>",
+    "<svrid>3617029648443513152</svrid>",
+    "<fromusr>wxid_other</fromusr>",
+    "<chatusr>room@chatroom</chatusr>",
+    "<displayname>Other</displayname>",
+    "<content>原始文本</content>",
+    "</refermsg>",
+    "</appmsg>",
+    "</msg>",
+  ].join("");
+
+  await handleGeweInboundBatch({
+    messages: [createMessage({ msgType: 49, xml })],
+    account: createAccount({
+      groupPolicy: "open",
+      groups: {
+        "room@chatroom": {
+          trigger: { mode: "quote" },
+        },
+      },
+    }),
+    config: {} as CoreConfig,
+    runtime: TEST_RUNTIME,
+    downloadQueue: new GeweDownloadQueue({ minDelayMs: 0, maxDelayMs: 0 }),
+  });
+
+  assert.equal(capture.dispatches.length, 0);
+});

@@ -240,11 +240,11 @@ export const gewePlugin: GeweChannelPlugin<ResolvedGeweAccount> = {
         account.config.groups && Object.keys(account.config.groups).length > 0;
       if (groupAllowlistConfigured) {
         return [
-          `- GeWe groups: groupPolicy="open" allows any member in allowed groups to trigger (mention-gated). Set channels.${CHANNEL_CONFIG_KEY}.groupPolicy="allowlist" + channels.${CHANNEL_CONFIG_KEY}.groupAllowFrom to restrict senders.`,
+          `- GeWe groups: groupPolicy="open" allows any member in allowed groups to trigger (at-gated by default). Set channels.${CHANNEL_CONFIG_KEY}.groupPolicy="allowlist" + channels.${CHANNEL_CONFIG_KEY}.groupAllowFrom to restrict senders.`,
         ];
       }
       return [
-        `- GeWe groups: groupPolicy="open" with no channels.${CHANNEL_CONFIG_KEY}.groups allowlist; any group can add + ping (mention-gated). Set channels.${CHANNEL_CONFIG_KEY}.groupPolicy="allowlist" + channels.${CHANNEL_CONFIG_KEY}.groupAllowFrom or configure channels.${CHANNEL_CONFIG_KEY}.groups.`,
+        `- GeWe groups: groupPolicy="open" with no channels.${CHANNEL_CONFIG_KEY}.groups allowlist; any group can add + at (at-gated by default). Set channels.${CHANNEL_CONFIG_KEY}.groupPolicy="allowlist" + channels.${CHANNEL_CONFIG_KEY}.groupAllowFrom or configure channels.${CHANNEL_CONFIG_KEY}.groups.`,
       ];
     },
   },

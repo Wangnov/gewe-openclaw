@@ -17,19 +17,29 @@ import {
 import type { GeweDownloadQueue } from "./download-queue.js";
 import { downloadGeweFile, downloadGeweImage, downloadGeweVideo, downloadGeweVoice } from "./download.js";
 import { deliverGewePayload } from "./delivery.js";
-import { resolveGeweReplyOptions } from "./reply-options.js";
+import { applyGeweReplyModeToPayload, resolveGeweReplyOptions } from "./reply-options.js";
 import { getGeweRuntime } from "./runtime.js";
 import { ensureRustSilkBinary } from "./silk.js";
 import { readGeweAllowFromStore, redeemGewePairCode } from "./pairing-store.js";
 import {
   normalizeGeweAllowlist,
   resolveGeweAllowlistMatch,
+  resolveGeweDmMatch,
+  resolveGeweDmReplyMode,
+  resolveGeweDmTriggerMode,
   resolveGeweGroupAllow,
   resolveGeweGroupMatch,
-  resolveGeweMentionGate,
-  resolveGeweRequireMention,
+  resolveGeweGroupReplyMode,
+  resolveGeweGroupTriggerMode,
+  resolveGeweTriggerGate,
 } from "./policy.js";
-import type { CoreConfig, GeweInboundMessage, ResolvedGeweAccount } from "./types.js";
+import type {
+  CoreConfig,
+  GeweDmReplyMode,
+  GeweGroupReplyMode,
+  GeweInboundMessage,
+  ResolvedGeweAccount,
+} from "./types.js";
 import {
   extractAppMsgType,
   extractFileName,
@@ -57,6 +67,7 @@ type PreparedInbound = {
   groupName?: string;
   groupSystemPrompt?: string;
   groupSkillFilter?: string[];
+  replyMode: GeweGroupReplyMode | GeweDmReplyMode;
   route: ReturnType<ReturnType<typeof getGeweRuntime>["channel"]["routing"]["resolveAgentRoute"]>;
   storePath: string;
   toWxid: string;
@@ -585,6 +596,7 @@ async function dispatchGeweInbound(params: {
     svrid: prepared.quoteDetails?.svrid,
     partialText: prepared.quoteDetails?.partialText,
   });
+  const repliedRef = { value: false };
 
   await core.channel.reply.dispatchReplyWithBufferedBlockDispatcher({
     ctx: ctxPayload,
@@ -594,8 +606,15 @@ async function dispatchGeweInbound(params: {
     }),
     dispatcherOptions: {
       deliver: async (payload: ReplyPayload) => {
+        const nextPayload = applyGeweReplyModeToPayload(payload, {
+          mode: prepared.replyMode,
+          isGroup: prepared.isGroup,
+          senderId: prepared.senderId,
+          defaultReplyToId: prepared.messageSid,
+          repliedRef,
+        });
         await deliverGewePayload({
-          payload,
+          payload: nextPayload,
           account,
           cfg: config as OpenClawConfig,
           toWxid: prepared.toWxid,
@@ -687,6 +706,13 @@ export async function handleGeweInboundBatch(params: {
         groups: account.config.groups,
         groupId: groupId ?? "",
         groupName: undefined,
+      })
+    : undefined;
+  const dmMatch = !isGroup
+    ? resolveGeweDmMatch({
+        dms: account.config.dms,
+        senderId,
+        senderName,
       })
     : undefined;
 
@@ -802,25 +828,38 @@ export async function handleGeweInboundBatch(params: {
   }
 
   const mentionRegexes = core.channel.mentions.buildMentionRegexes(config as OpenClawConfig);
-  const wasMentioned = mentionRegexes.length
+  const wasAtTriggered = mentionRegexes.length
     ? core.channel.mentions.matchesMentionPatterns(rawBodyCandidate, mentionRegexes)
     : false;
-  const shouldRequireMention = isGroup
-    ? resolveGeweRequireMention({
+  const latestQuote = entries.at(-1)?.quoteDetails;
+  const wasQuoteTriggered = Boolean(
+    latestQuote &&
+      (!isGroup || latestQuote.fromUsr?.trim() === lastMessage.botWxid.trim()),
+  );
+  const triggerMode = isGroup
+    ? resolveGeweGroupTriggerMode({
         groupConfig: groupMatch?.groupConfig,
         wildcardConfig: groupMatch?.wildcardConfig,
       })
-    : false;
-  const mentionGate = resolveGeweMentionGate({
+    : resolveGeweDmTriggerMode({
+        dmConfig: dmMatch?.dmConfig,
+        wildcardConfig: dmMatch?.wildcardConfig,
+      });
+  const triggerGate = resolveGeweTriggerGate({
     isGroup,
-    requireMention: shouldRequireMention,
-    wasMentioned,
+    triggerMode,
+    wasAtTriggered,
+    wasQuoteTriggered,
     allowTextCommands,
     hasControlCommand,
     commandAuthorized,
   });
-  if (isGroup && mentionGate.shouldSkip) {
-    runtime.log?.(`gewe: drop group ${groupId} (no mention)`);
+  if (triggerGate.shouldSkip) {
+    runtime.log?.(
+      isGroup
+        ? `gewe: drop group ${groupId} (trigger=${triggerMode})`
+        : `gewe: drop DM sender ${senderId} (trigger=${triggerMode})`,
+    );
     return;
   }
 
@@ -852,11 +891,27 @@ export async function handleGeweInboundBatch(params: {
     senderName: senderName || undefined,
     groupId,
     groupName: undefined,
-    groupSystemPrompt:
-      groupMatch?.groupConfig?.systemPrompt?.trim() ||
-      groupMatch?.wildcardConfig?.systemPrompt?.trim() ||
-      undefined,
-    groupSkillFilter: groupMatch?.groupConfig?.skills ?? groupMatch?.wildcardConfig?.skills,
+    groupSystemPrompt: isGroup
+      ? groupMatch?.groupConfig?.systemPrompt?.trim() ||
+        groupMatch?.wildcardConfig?.systemPrompt?.trim() ||
+        undefined
+      : dmMatch?.dmConfig?.systemPrompt?.trim() ||
+        dmMatch?.wildcardConfig?.systemPrompt?.trim() ||
+        undefined,
+    groupSkillFilter: isGroup
+      ? groupMatch?.groupConfig?.skills ?? groupMatch?.wildcardConfig?.skills
+      : dmMatch?.dmConfig?.skills ?? dmMatch?.wildcardConfig?.skills,
+    replyMode: isGroup
+      ? resolveGeweGroupReplyMode({
+          groupConfig: groupMatch?.groupConfig,
+          wildcardConfig: groupMatch?.wildcardConfig,
+          autoQuoteReply: account.config.autoQuoteReply,
+        })
+      : resolveGeweDmReplyMode({
+          dmConfig: dmMatch?.dmConfig,
+          wildcardConfig: dmMatch?.wildcardConfig,
+          autoQuoteReply: account.config.autoQuoteReply,
+        }),
     route,
     storePath,
     toWxid,
