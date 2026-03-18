@@ -135,3 +135,78 @@ test("deliverGewePayload 在 appMsg 存在时会优先发送 GeWe 富消息", as
     assert.match(calls[0]?.url ?? "", /\/gewe\/v2\/api\/message\/postAppMsg$/);
   });
 });
+
+test("sendEmojiGewe 会向 GeWe postEmoji 发送 emoji 元数据", async () => {
+  installRuntime();
+  const sendModule = (await import("./send.ts")) as {
+    sendEmojiGewe?: (params: {
+      account: ResolvedGeweAccount;
+      toWxid: string;
+      emojiMd5: string;
+      emojiSize: number;
+    }) => Promise<unknown>;
+  };
+
+  assert.equal(typeof sendModule.sendEmojiGewe, "function");
+
+  await withMockFetch(async (calls) => {
+    await sendModule.sendEmojiGewe?.({
+      account: createAccount(),
+      toWxid: "wxid_target",
+      emojiMd5: "4cc7540a85b5b6cf4ba14e9f4ae08b7c",
+      emojiSize: 102357,
+    });
+
+    assert.equal(calls.length, 1);
+    assert.match(calls[0]?.url ?? "", /\/gewe\/v2\/api\/message\/postEmoji$/);
+    const body = JSON.parse(String(calls[0]?.init?.body ?? "{}")) as {
+      appId?: string;
+      toWxid?: string;
+      emojiMd5?: string;
+      emojiSize?: number;
+    };
+    assert.deepEqual(body, {
+      appId: "app-rich",
+      toWxid: "wxid_target",
+      emojiMd5: "4cc7540a85b5b6cf4ba14e9f4ae08b7c",
+      emojiSize: 102357,
+    });
+  });
+});
+
+test("deliverGewePayload 在 emoji 存在时会优先发送 GeWe emoji", async () => {
+  installRuntime();
+  const deliveryModule = (await import("./delivery.ts")) as {
+    deliverGewePayload?: (params: {
+      payload: {
+        text?: string;
+        channelData?: Record<string, unknown>;
+      };
+      account: ResolvedGeweAccount;
+      cfg: {};
+      toWxid: string;
+    }) => Promise<unknown>;
+  };
+
+  await withMockFetch(async (calls) => {
+    await deliveryModule.deliverGewePayload?.({
+      payload: {
+        text: "这段纯文本不应抢占 emoji",
+        channelData: {
+          "gewe-openclaw": {
+            emoji: {
+              emojiMd5: "4cc7540a85b5b6cf4ba14e9f4ae08b7c",
+              emojiSize: 102357,
+            },
+          },
+        },
+      },
+      account: createAccount(),
+      cfg: {},
+      toWxid: "wxid_target",
+    });
+
+    assert.equal(calls.length, 1);
+    assert.match(calls[0]?.url ?? "", /\/gewe\/v2\/api\/message\/postEmoji$/);
+  });
+});

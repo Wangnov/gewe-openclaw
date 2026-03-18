@@ -16,6 +16,7 @@ import { resolveS3Config, uploadToS3 } from "./s3.js";
 import { buildRustSilkEncodeArgs, ensureRustSilkBinary } from "./silk.js";
 import {
   sendAppMsgGewe,
+  sendEmojiGewe,
   sendFileGewe,
   sendImageGewe,
   sendLinkGewe,
@@ -29,6 +30,10 @@ type GeweChannelData = {
   ats?: string;
   appMsg?: {
     appmsg: string;
+  };
+  emoji?: {
+    emojiMd5: string;
+    emojiSize: number;
   };
   link?: {
     title: string;
@@ -846,6 +851,22 @@ export async function deliverGewePayload(params: {
       account,
       toWxid,
       appmsg: geweData.appMsg.appmsg.trim(),
+    });
+    core.channel.activity.record({
+      channel: CHANNEL_ID,
+      accountId: account.accountId,
+      direction: "outbound",
+    });
+    statusSink?.({ lastOutboundAt: Date.now() });
+    return result;
+  }
+
+  if (geweData?.emoji?.emojiMd5?.trim() && typeof geweData.emoji.emojiSize === "number") {
+    const result = await sendEmojiGewe({
+      account,
+      toWxid,
+      emojiMd5: geweData.emoji.emojiMd5.trim(),
+      emojiSize: Math.floor(geweData.emoji.emojiSize),
     });
     core.channel.activity.record({
       channel: CHANNEL_ID,

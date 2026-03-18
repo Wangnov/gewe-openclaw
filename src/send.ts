@@ -187,3 +187,25 @@ export async function sendAppMsgGewe(params: {
   const data = assertGeweOk(resp, "postAppMsg");
   return resolveSendResult({ toWxid: params.toWxid, data });
 }
+
+export async function sendEmojiGewe(params: {
+  account: ResolvedGeweAccount;
+  toWxid: string;
+  emojiMd5: string;
+  emojiSize: number;
+}): Promise<GeweSendResult> {
+  const ctx = buildContext(params.account);
+  const resp = await postGeweJson<GeweSendResponseData>({
+    baseUrl: ctx.baseUrl,
+    token: ctx.token,
+    path: "/gewe/v2/api/message/postEmoji",
+    body: {
+      appId: ctx.appId,
+      toWxid: params.toWxid,
+      emojiMd5: params.emojiMd5,
+      emojiSize: params.emojiSize,
+    },
+  });
+  const data = assertGeweOk(resp, "postEmoji");
+  return resolveSendResult({ toWxid: params.toWxid, data });
+}
