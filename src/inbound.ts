@@ -39,6 +39,7 @@ import {
   type GeweQuoteDetails,
 } from "./xml.js";
 import { CHANNEL_ID } from "./constants.js";
+import { rememberGeweQuoteReplyContext } from "./quote-context-cache.js";
 
 type PreparedInbound = {
   rawBody: string;
@@ -576,6 +577,13 @@ async function dispatchGeweInbound(params: {
     onRecordError: (err) => {
       runtime.error?.(`gewe: failed updating session meta: ${String(err)}`);
     },
+  });
+
+  rememberGeweQuoteReplyContext({
+    accountId: account.accountId,
+    messageId: prepared.messageSid,
+    svrid: prepared.quoteDetails?.svrid,
+    partialText: prepared.quoteDetails?.partialText,
   });
 
   await core.channel.reply.dispatchReplyWithBufferedBlockDispatcher({

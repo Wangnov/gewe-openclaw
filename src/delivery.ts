@@ -33,6 +33,7 @@ import {
   sendVoiceGewe,
   revokeMessageGewe,
 } from "./send.js";
+import { recallGeweQuoteReplyContext } from "./quote-context-cache.js";
 import type { GeweSendResult, ResolvedGeweAccount } from "./types.js";
 
 type GeweChannelData = {
@@ -952,6 +953,13 @@ export async function deliverGewePayload(params: {
   const mediaUrl =
     payload.mediaUrl?.trim() || payload.mediaUrls?.[0]?.trim() || "";
   const normalizedMediaUrl = normalizeMediaToken(mediaUrl);
+  const autoQuoteContext =
+    trimmedText && payload.replyToId?.trim() && !mediaUrl
+      ? recallGeweQuoteReplyContext({
+          accountId: account.accountId,
+          messageId: payload.replyToId,
+        })
+      : null;
 
   if (geweData?.appMsg?.appmsg?.trim()) {
     const result = await sendAppMsgGewe({
@@ -1155,8 +1163,9 @@ export async function deliverGewePayload(params: {
       account,
       toWxid,
       appmsg: buildQuoteReplyAppMsg({
-        svrid: payload.replyToId.trim(),
+        svrid: autoQuoteContext?.svrid ?? payload.replyToId.trim(),
         title: trimmedText,
+        partialText: autoQuoteContext?.partialText,
       }),
     });
     core.channel.activity.record({
