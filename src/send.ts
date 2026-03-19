@@ -196,6 +196,7 @@ export async function sendAppMsgGewe(params: {
   account: ResolvedGeweAccount;
   toWxid: string;
   appmsg: string;
+  ats?: string;
 }): Promise<GeweSendResult> {
   const ctx = buildContext(params.account);
   const resp = await postGeweJson<GeweSendResponseData>({
@@ -206,6 +207,7 @@ export async function sendAppMsgGewe(params: {
       appId: ctx.appId,
       toWxid: params.toWxid,
       appmsg: params.appmsg,
+      ...(params.ats ? { ats: params.ats } : {}),
     },
   });
   const data = assertGeweOk(resp, "postAppMsg");

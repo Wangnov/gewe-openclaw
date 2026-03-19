@@ -286,7 +286,7 @@ test("deliverGewePayload 会发送显式 quoteReply", async () => {
   });
 });
 
-test("quoteReply.atWxid 会生成 refermsg.msgsource atuserlist", async () => {
+test("quoteReply.atWxid 会把 ats 放到 postAppMsg 顶层，而不是写进 refermsg.msgsource", async () => {
   installRuntime();
   const deliveryModule = (await import("./delivery.ts")) as {
     deliverGewePayload?: (params: {
@@ -322,11 +322,10 @@ test("quoteReply.atWxid 会生成 refermsg.msgsource atuserlist", async () => {
     assert.equal(calls.length, 1);
     const body = JSON.parse(String(calls[0]?.init?.body ?? "{}")) as {
       appmsg?: string;
+      ats?: string;
     };
-    assert.match(
-      body.appmsg ?? "",
-      /&lt;msgsource&gt;&lt;atuserlist&gt;wxid_member_1&lt;\/atuserlist&gt;&lt;\/msgsource&gt;/,
-    );
+    assert.equal(body.ats, "wxid_member_1");
+    assert.doesNotMatch(body.appmsg ?? "", /<atuserlist>/);
   });
 });
 
@@ -416,6 +415,50 @@ test("replyToId + text 会自动发送引用回复", async () => {
     assert.match(body.appmsg ?? "", /<type>57<\/type>/);
     assert.match(body.appmsg ?? "", /<svrid>208008054840614808<\/svrid>/);
     assert.match(body.appmsg ?? "", /<title>收到<\/title>/);
+  });
+});
+
+test("replyToId + text 在携带 ats 时会把原生 @ 透传到 postAppMsg 顶层", async () => {
+  installRuntime();
+  const deliveryModule = (await import("./delivery.ts")) as {
+    deliverGewePayload?: (params: {
+      payload: {
+        text?: string;
+        channelData?: Record<string, unknown>;
+        replyToId?: string;
+        mediaUrl?: string;
+        mediaUrls?: string[];
+      };
+      account: ResolvedGeweAccount;
+      cfg: {};
+      toWxid: string;
+    }) => Promise<unknown>;
+  };
+
+  await withMockFetch(async (calls) => {
+    await deliveryModule.deliverGewePayload?.({
+      payload: {
+        text: "@CLAsh\u2005收到",
+        replyToId: "208008054840614808",
+        channelData: {
+          "gewe-openclaw": {
+            ats: "wxid_member_1",
+          },
+        },
+      },
+      account: createAccount(),
+      cfg: {},
+      toWxid: "room@chatroom",
+    });
+
+    assert.equal(calls.length, 1);
+    assert.match(calls[0]?.url ?? "", /\/gewe\/v2\/api\/message\/postAppMsg$/);
+    const body = JSON.parse(String(calls[0]?.init?.body ?? "{}")) as {
+      appmsg?: string;
+      ats?: string;
+    };
+    assert.equal(body.ats, "wxid_member_1");
+    assert.match(body.appmsg ?? "", /<title>@CLAsh 收到<\/title>/);
   });
 });
 

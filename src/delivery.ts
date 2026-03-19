@@ -770,7 +770,6 @@ function buildPartialQuoteXml(params?: {
 function buildQuoteReplyAppMsg(params: {
   title: string;
   svrid: string;
-  atWxid?: string;
   partialText?: {
     text?: string;
     start?: string;
@@ -782,12 +781,12 @@ function buildQuoteReplyAppMsg(params: {
 }): string {
   const safeTitle = escapeXmlText(params.title.trim() || "引用回复");
   const safeSvrid = escapeXmlText(params.svrid.trim());
-  const safeAtWxid = params.atWxid?.trim() ? escapeXmlText(params.atWxid.trim()) : undefined;
-  const encodedMsgSource = safeAtWxid
-    ? `&lt;msgsource&gt;&lt;atuserlist&gt;${safeAtWxid}&lt;/atuserlist&gt;&lt;/msgsource&gt;`
-    : "";
   const partialTextXml = buildPartialQuoteXml(params.partialText);
-  return `<appmsg><title>${safeTitle}</title><type>57</type><refermsg>${partialTextXml}<svrid>${safeSvrid}</svrid>${safeAtWxid ? `<msgsource>${encodedMsgSource}</msgsource>` : ""}</refermsg></appmsg>`;
+  return `<appmsg><title>${safeTitle}</title><type>57</type><refermsg>${partialTextXml}<svrid>${safeSvrid}</svrid></refermsg></appmsg>`;
+}
+
+function summarizeOutboundText(value: string): string {
+  return JSON.stringify(value.replace(/\s+/g, " ").trim().slice(0, 120));
 }
 
 async function stageMedia(params: {
@@ -983,15 +982,18 @@ export async function deliverGewePayload(params: {
       : payload.replyToId?.trim() || "";
   const quoteReplyTitle = geweData?.quoteReply?.title?.trim() || trimmedText;
   if (quoteReplySvrid && quoteReplyTitle && geweData?.quoteReply) {
+    core.log?.(
+      `gewe: outbound quoteReply explicit to=${toWxid} ats=${JSON.stringify(geweData.quoteReply.atWxid?.trim() || "")} title=${summarizeOutboundText(quoteReplyTitle)}`,
+    );
     const result = await sendAppMsgGewe({
       account,
       toWxid,
       appmsg: buildQuoteReplyAppMsg({
         svrid: quoteReplySvrid,
         title: quoteReplyTitle,
-        atWxid: geweData.quoteReply.atWxid?.trim(),
         partialText: geweData.quoteReply.partialText,
       }),
+      ats: geweData.quoteReply.atWxid?.trim(),
     });
     core.channel.activity.record({
       channel: CHANNEL_ID,
@@ -1160,6 +1162,9 @@ export async function deliverGewePayload(params: {
   }
 
   if (autoQuoteReplyEnabled && trimmedText && payload.replyToId?.trim() && !mediaUrl) {
+    core.log?.(
+      `gewe: outbound quoteReply auto to=${toWxid} ats=${JSON.stringify(geweData?.ats?.trim() || "")} title=${summarizeOutboundText(trimmedText)}`,
+    );
     const result = await sendAppMsgGewe({
       account,
       toWxid,
@@ -1168,6 +1173,7 @@ export async function deliverGewePayload(params: {
         title: trimmedText,
         partialText: autoQuoteContext?.partialText,
       }),
+      ats: geweData?.ats,
     });
     core.channel.activity.record({
       channel: CHANNEL_ID,
