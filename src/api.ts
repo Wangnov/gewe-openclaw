@@ -1,3 +1,5 @@
+import type { ResolvedGeweAccount } from "./types.js";
+
 export type GeweApiResponse<T> = {
   ret: number;
   msg: string;
@@ -64,4 +66,23 @@ export function assertGeweOk<T>(resp: GeweApiResponse<T>, context: string): T | 
     throw new Error(`GeWe API ${context} failed: ${resp.ret} ${msg}`);
   }
   return resp.data;
+}
+
+export async function postGeweAccountJson<T>(params: {
+  account: ResolvedGeweAccount;
+  path: string;
+  body?: Record<string, unknown>;
+  context?: string;
+}): Promise<T | undefined> {
+  const baseUrl = params.account.config.apiBaseUrl?.trim() || "https://www.geweapi.com";
+  const resp = await postGeweJson<T>({
+    baseUrl,
+    token: params.account.token,
+    path: params.path,
+    body: {
+      appId: params.account.appId,
+      ...(params.body ?? {}),
+    },
+  });
+  return assertGeweOk(resp, params.context ?? params.path);
 }

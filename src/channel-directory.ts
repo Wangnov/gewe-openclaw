@@ -2,6 +2,13 @@ import type { ChannelDirectoryAdapter, ChannelDirectoryEntry } from "openclaw/pl
 
 import { resolveGeweAccount } from "./accounts.js";
 import {
+  fetchContactsListCacheGewe,
+  fetchContactsListGewe,
+  getBriefInfoGewe,
+  type GeweContactProfile,
+  type GeweContactsCatalog,
+} from "./contacts-api.js";
+import {
   getGeweChatroomInfo,
   getGeweProfile,
   normalizeGeweBindingConversationId,
@@ -14,6 +21,7 @@ import {
   listCachedGeweUsers,
   rememberGeweDirectoryObservation,
   rememberGeweGroupMembers,
+  rememberGeweUsers,
   resolveCachedGeweName,
 } from "./directory-cache.js";
 
@@ -34,6 +42,7 @@ type BindingLike = {
 };
 
 const CHANNEL_ALIASES = new Set(["gewe-openclaw", "gewe", "wechat", "wx"]);
+const BRIEF_INFO_BATCH_SIZE = 100;
 
 function addNamedEntry(target: Map<string, DirectoryNamedEntry>, entry: DirectoryNamedEntry) {
   if (!entry.id || target.has(entry.id)) {
@@ -74,8 +83,58 @@ function toDirectoryEntries(
   }));
 }
 
+function chunkEntries<T>(values: T[], size: number): T[][] {
+  if (values.length === 0) {
+    return [];
+  }
+  const chunks: T[][] = [];
+  for (let index = 0; index < values.length; index += size) {
+    chunks.push(values.slice(index, index + size));
+  }
+  return chunks;
+}
+
 function isGroupId(value: string): boolean {
   return /@chatroom$/i.test(value);
+}
+
+function dedupeIds(values: Array<string | null | undefined>): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const value of values) {
+    const normalized = normalizeGeweMessagingTarget(value ?? "");
+    if (!normalized || seen.has(normalized)) {
+      continue;
+    }
+    seen.add(normalized);
+    result.push(normalized);
+  }
+  return result;
+}
+
+function resolveCatalogFriendIds(catalog: GeweContactsCatalog | undefined): string[] {
+  return dedupeIds(catalog?.friends ?? []);
+}
+
+function resolveContactProfileId(profile: GeweContactProfile): string | undefined {
+  const normalized = normalizeGeweMessagingTarget(
+    String(profile.userName ?? profile.wxid ?? "").trim(),
+  );
+  if (!normalized || isGroupId(normalized)) {
+    return undefined;
+  }
+  return normalized;
+}
+
+function resolveContactDisplayName(profile: GeweContactProfile): string | undefined {
+  const candidates = [profile.remark, profile.nickName, profile.alias];
+  for (const candidate of candidates) {
+    const trimmed = typeof candidate === "string" ? candidate.trim() : "";
+    if (trimmed) {
+      return trimmed;
+    }
+  }
+  return undefined;
 }
 
 function listConfigBindings(cfg: OpenClawConfig): BindingLike[] {
@@ -215,6 +274,80 @@ export function collectKnownGeweGroupEntries(params: {
   return collectKnownGroupEntries(params);
 }
 
+async function enrichPeerEntriesFromContacts(params: {
+  cfg: OpenClawConfig;
+  accountId?: string | null;
+  entries: DirectoryNamedEntry[];
+}): Promise<DirectoryNamedEntry[]> {
+  const account = resolveGeweAccount({
+    cfg: params.cfg as CoreConfig,
+    accountId: params.accountId,
+  });
+  const entries = new Map<string, DirectoryNamedEntry>();
+  for (const entry of params.entries) {
+    addNamedEntry(entries, entry);
+  }
+
+  try {
+    const cachedCatalog = await fetchContactsListCacheGewe({ account });
+    let friendIds = resolveCatalogFriendIds(cachedCatalog);
+    if (friendIds.length === 0) {
+      friendIds = resolveCatalogFriendIds(await fetchContactsListGewe({ account }));
+    }
+
+    for (const friendId of friendIds) {
+      addNamedEntry(entries, {
+        id: friendId,
+        name: resolveCachedGeweName({
+          accountId: account.accountId,
+          id: friendId,
+          kind: "user",
+        }),
+      });
+    }
+
+    const missingIds = Array.from(entries.values())
+      .filter((entry) => !entry.name && !isGroupId(entry.id))
+      .map((entry) => entry.id);
+    if (missingIds.length === 0) {
+      return Array.from(entries.values());
+    }
+
+    const rememberedUsers: Array<{ id: string; name?: string }> = [];
+    for (const batch of chunkEntries(missingIds, BRIEF_INFO_BATCH_SIZE)) {
+      const profiles = (await getBriefInfoGewe({ account, wxids: batch })) ?? [];
+      for (const profile of profiles) {
+        const id = resolveContactProfileId(profile);
+        if (!id) {
+          continue;
+        }
+        const name = resolveContactDisplayName(profile);
+        rememberedUsers.push({ id, name });
+        const existing = entries.get(id);
+        if (existing) {
+          entries.set(id, {
+            ...existing,
+            name: name ?? existing.name,
+          });
+          continue;
+        }
+        addNamedEntry(entries, { id, name });
+      }
+    }
+
+    if (rememberedUsers.length > 0) {
+      rememberGeweUsers({
+        accountId: account.accountId,
+        users: rememberedUsers,
+      });
+    }
+  } catch {
+    // 目录 enrich 走尽力而为策略，避免因为通讯录 API 波动导致目录不可用。
+  }
+
+  return Array.from(entries.values());
+}
+
 export const geweDirectory: ChannelDirectoryAdapter = {
   self: async ({ cfg, accountId }) => {
     const account = resolveGeweAccount({
@@ -232,7 +365,14 @@ export const geweDirectory: ChannelDirectoryAdapter = {
   listPeers: async ({ cfg, accountId, query, limit }) =>
     toDirectoryEntries(
       "user",
-      applyQueryAndLimit(collectKnownPeerEntries({ cfg, accountId }), { query, limit }),
+      applyQueryAndLimit(
+        await enrichPeerEntriesFromContacts({
+          cfg,
+          accountId,
+          entries: collectKnownPeerEntries({ cfg, accountId }),
+        }),
+        { query, limit },
+      ),
     ),
   listGroups: async ({ cfg, accountId, query, limit }) =>
     toDirectoryEntries(

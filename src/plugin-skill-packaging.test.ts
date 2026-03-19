@@ -32,3 +32,17 @@ test("gewe channel rules skill exists with expected core guidance", () => {
   assert.match(content, /纯文本短段落和简单序号/);
   assert.match(content, /GEWE_QUOTE_PARTIAL/);
 });
+
+test("gewe agent tools skill exists with expected tool guidance", () => {
+  const skillPath = path.join(rootDir, "skills", "gewe-agent-tools", "SKILL.md");
+  const content = fs.readFileSync(skillPath, "utf-8");
+
+  assert.match(content, /skillKey":\s*"gewe-agent-tools"/);
+  assert.match(content, /gewe_contacts/);
+  assert.match(content, /gewe_groups/);
+  assert.match(content, /gewe_moments/);
+  assert.match(content, /gewe_personal/);
+  assert.match(content, /当前私聊会话/);
+  assert.match(content, /当前群会话/);
+  assert.match(content, /会改真实微信状态/);
+});

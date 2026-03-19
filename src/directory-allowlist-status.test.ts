@@ -150,6 +150,88 @@ test("GeWe directory listGroupMembers 会 live 读取群成员并回填到名字
   );
 });
 
+test("GeWe directory listPeers 会 live 拉通讯录并用 brief 信息 enrich 名字", async () => {
+  const cfg = {
+    channels: {
+      "gewe-openclaw": {
+        token: "token",
+        appId: "app-id",
+      },
+    },
+  };
+
+  await withMockFetch(
+    async (url) => {
+      if (url.endsWith("/gewe/v2/api/contacts/fetchContactsListCache")) {
+        return new Response(
+          JSON.stringify({
+            ret: 200,
+            msg: "ok",
+            data: {
+              friends: [],
+              chatrooms: [],
+              ghs: [],
+            },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      if (url.endsWith("/gewe/v2/api/contacts/fetchContactsList")) {
+        return new Response(
+          JSON.stringify({
+            ret: 200,
+            msg: "ok",
+            data: {
+              friends: ["wxid_alice", "wxid_bob"],
+              chatrooms: [],
+              ghs: [],
+            },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      if (url.endsWith("/gewe/v2/api/contacts/getBriefInfo")) {
+        return new Response(
+          JSON.stringify({
+            ret: 200,
+            msg: "ok",
+            data: [
+              { userName: "wxid_alice", nickName: "Alice", remark: "产品 Alice" },
+              { userName: "wxid_bob", nickName: "Bob", remark: "" },
+            ],
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      throw new Error(`unexpected url: ${url}`);
+    },
+    async () => {
+      const peers = await gewePlugin.directory?.listPeers?.({
+        cfg: cfg as never,
+        runtime: {} as never,
+      });
+
+      assert.deepEqual(
+        peers?.map((entry) => ({ id: entry.id, name: entry.name })),
+        [
+          { id: "wxid_alice", name: "产品 Alice" },
+          { id: "wxid_bob", name: "Bob" },
+        ],
+      );
+
+      const resolved = await gewePlugin.allowlist?.resolveNames?.({
+        cfg: cfg as never,
+        scope: "dm",
+        entries: ["wxid_alice", "wxid_bob"],
+      });
+      assert.deepEqual(resolved, [
+        { input: "wxid_alice", resolved: true, name: "产品 Alice" },
+        { input: "wxid_bob", resolved: true, name: "Bob" },
+      ]);
+    },
+  );
+});
+
 test("GeWe allowlist 会读取顶层列表和群覆盖，并优先显示已知群名", async () => {
   rememberGeweDirectoryObservation({
     accountId: "default",

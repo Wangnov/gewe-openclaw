@@ -102,6 +102,22 @@ export function rememberGeweGroupMembers(params: {
   cache.groupMembers.set(params.groupId, memberMap);
 }
 
+export function rememberGeweUsers(params: {
+  accountId?: string | null;
+  users: Array<{ id?: string | null; name?: string | null }>;
+  timestamp?: number;
+}) {
+  const cache = resolveAccountCache(params.accountId);
+  const lastSeenAt = params.timestamp ?? Date.now();
+  for (const user of params.users) {
+    upsertNamedEntry(cache.users, {
+      id: user.id,
+      name: user.name,
+      lastSeenAt,
+    });
+  }
+}
+
 export function listCachedGeweUsers(accountId?: string | null): NamedEntry[] {
   return Array.from(resolveAccountCache(accountId).users.values());
 }

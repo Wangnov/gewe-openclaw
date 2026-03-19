@@ -1,9 +1,15 @@
 import { createHash } from "node:crypto";
 
 import { resolveGeweAccount } from "./accounts.js";
-import { assertGeweOk, postGeweJson } from "./api.js";
+import {
+  getChatroomInfoGewe,
+  modifyChatroomNickNameForSelfGewe,
+  modifyChatroomRemarkGewe,
+  type GeweChatroomInfo,
+} from "./groups-api.js";
 import { normalizeGeweMessagingTarget } from "./normalize.js";
 import { normalizeAccountId, type OpenClawConfig } from "./openclaw-compat.js";
+import { getProfileGewe, type GeweProfile } from "./personal-api.js";
 import type {
   CoreConfig,
   GeweAccountConfig,
@@ -45,22 +51,6 @@ export type ResolvedGeweGroupBindingIdentity = {
   remark: Required<Pick<GeweBindingIdentityRemarkConfig, "source">> & {
     value?: string;
   };
-};
-
-export type GeweProfile = {
-  wxid: string;
-  nickName?: string;
-};
-
-export type GeweChatroomInfo = {
-  chatroomId: string;
-  nickName?: string;
-  remark?: string | null;
-  memberList?: Array<{
-    wxid?: string;
-    nickName?: string | null;
-    displayName?: string | null;
-  }>;
 };
 
 function normalizeAgentId(value: string | undefined | null): string {
@@ -343,15 +333,7 @@ export async function getGeweProfile(params: {
   account: ResolvedGeweAccount;
 }): Promise<GeweProfile> {
   requireConfiguredAccount(params.account);
-  const resp = await postGeweJson<GeweProfile>({
-    baseUrl: params.account.config.apiBaseUrl ?? "https://www.geweapi.com",
-    token: params.account.token,
-    path: "/gewe/v2/api/personal/getProfile",
-    body: {
-      appId: params.account.appId,
-    },
-  });
-  const data = assertGeweOk(resp, "getProfile");
+  const data = await getProfileGewe({ account: params.account });
   return {
     wxid: data?.wxid?.trim() ?? "",
     nickName: data?.nickName?.trim() || undefined,
@@ -363,16 +345,10 @@ export async function getGeweChatroomInfo(params: {
   groupId: string;
 }): Promise<GeweChatroomInfo> {
   requireConfiguredAccount(params.account);
-  const resp = await postGeweJson<GeweChatroomInfo>({
-    baseUrl: params.account.config.apiBaseUrl ?? "https://www.geweapi.com",
-    token: params.account.token,
-    path: "/gewe/v2/api/group/getChatroomInfo",
-    body: {
-      appId: params.account.appId,
-      chatroomId: params.groupId,
-    },
+  const data = await getChatroomInfoGewe({
+    account: params.account,
+    chatroomId: params.groupId,
   });
-  const data = assertGeweOk(resp, "getChatroomInfo");
   return {
     chatroomId: data?.chatroomId?.trim() ?? params.groupId,
     nickName: data?.nickName?.trim() || undefined,
@@ -387,17 +363,11 @@ export async function modifyGeweChatroomRemark(params: {
   remark: string;
 }) {
   requireConfiguredAccount(params.account);
-  const resp = await postGeweJson({
-    baseUrl: params.account.config.apiBaseUrl ?? "https://www.geweapi.com",
-    token: params.account.token,
-    path: "/gewe/v2/api/group/modifyChatroomRemark",
-    body: {
-      appId: params.account.appId,
-      chatroomId: params.groupId,
-      chatroomRemark: params.remark,
-    },
+  await modifyChatroomRemarkGewe({
+    account: params.account,
+    chatroomId: params.groupId,
+    chatroomRemark: params.remark,
   });
-  assertGeweOk(resp, "modifyChatroomRemark");
 }
 
 export async function modifyGeweChatroomSelfNickname(params: {
@@ -406,17 +376,11 @@ export async function modifyGeweChatroomSelfNickname(params: {
   nickName: string;
 }) {
   requireConfiguredAccount(params.account);
-  const resp = await postGeweJson({
-    baseUrl: params.account.config.apiBaseUrl ?? "https://www.geweapi.com",
-    token: params.account.token,
-    path: "/gewe/v2/api/group/modifyChatroomNickNameForSelf",
-    body: {
-      appId: params.account.appId,
-      chatroomId: params.groupId,
-      nickName: params.nickName,
-    },
+  await modifyChatroomNickNameForSelfGewe({
+    account: params.account,
+    chatroomId: params.groupId,
+    nickName: params.nickName,
   });
-  assertGeweOk(resp, "modifyChatroomNickNameForSelf");
 }
 
 export function resolveGeweBindingIdentityConfigForGroup(params: {

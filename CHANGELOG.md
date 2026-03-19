@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2026.3.22] - 2026-03-19
+
+### Added
+
+- GeWe 补齐官方联系人、群、朋友圈、个人资料四大模块的 API 封装，覆盖好友信息、群资料、朋友圈读取与发布、个人资料与隐私相关能力。
+- 新增四个 agent 可直接调用的 GeWe 工具：`gewe_contacts`、`gewe_groups`、`gewe_moments`、`gewe_personal`。
+- 新增 `gewe-agent-tools` skill，指导 agent 选择正确工具、利用当前私聊或群会话推断目标，并区分只读与写操作。
+
+### Changed
+
+- GeWe directory 现在会按需拉取通讯录并用联系人 brief 信息补全名字，后续 allowlist 名称解析也会复用这批缓存。
+- GeWe 群绑定和资料读取相关逻辑已统一收口到新的官方 API 包装层，减少重复请求封装并保持行为一致。
+
 ## [2026.3.21] - 2026-03-19
 
 ### Added
