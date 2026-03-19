@@ -646,6 +646,7 @@ async function dispatchGeweInbound(params: {
           mode: prepared.replyMode,
           isGroup: prepared.isGroup,
           senderId: prepared.senderId,
+          senderName: prepared.senderName,
           defaultReplyToId: prepared.messageSid,
           repliedRef,
         });

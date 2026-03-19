@@ -64,6 +64,38 @@ function withAtSender(payload: ReplyPayload, senderId: string | undefined): Repl
   };
 }
 
+function withAtSenderPrefix(payload: ReplyPayload, senderName: string | undefined): ReplyPayload {
+  const trimmedSenderName = senderName?.trim();
+  const trimmedText = payload.text?.trim();
+  if (!trimmedSenderName || !trimmedText) {
+    return payload;
+  }
+
+  const mentionPrefix = `@${trimmedSenderName}`;
+  if (trimmedText === mentionPrefix || trimmedText.startsWith(`${mentionPrefix} `) || trimmedText.startsWith(`${mentionPrefix}\u2005`)) {
+    return payload;
+  }
+
+  return {
+    ...payload,
+    text: `${mentionPrefix}\u2005${trimmedText}`,
+  };
+}
+
+function withoutDefaultReplyToId(
+  payload: ReplyPayload,
+  defaultReplyToId: string | undefined,
+): ReplyPayload {
+  const explicitReplyToId = payload.replyToId?.trim();
+  const trimmedDefaultReplyToId = defaultReplyToId?.trim();
+  if (!explicitReplyToId || !trimmedDefaultReplyToId || explicitReplyToId !== trimmedDefaultReplyToId) {
+    return payload;
+  }
+
+  const { replyToId: _ignored, ...rest } = payload;
+  return rest;
+}
+
 export function resolveGeweReplyOptions(
   account: Pick<ResolvedGeweAccount, "config">,
   opts?: { skillFilter?: string[] },
@@ -83,6 +115,7 @@ export function applyGeweReplyModeToPayload(
     mode: GeweReplyMode;
     isGroup: boolean;
     senderId?: string;
+    senderName?: string;
     defaultReplyToId?: string;
     repliedRef?: RepliedRef;
   },
@@ -97,10 +130,15 @@ export function applyGeweReplyModeToPayload(
     params.repliedRef.value = true;
   }
 
+  if (effectiveMode === "plain" || effectiveMode === "at_sender") {
+    nextPayload = withoutDefaultReplyToId(nextPayload, params.defaultReplyToId);
+  }
+
   if (
     params.isGroup &&
     (effectiveMode === "at_sender" || effectiveMode === "quote_and_at")
   ) {
+    nextPayload = withAtSenderPrefix(nextPayload, params.senderName);
     nextPayload = withAtSender(nextPayload, params.senderId);
   }
 
