@@ -588,6 +588,30 @@ GeWe 的状态页现在会额外显示：
 
 ## 依赖
 
+## 发布（维护者）
+
+仓库已内置 tag 驱动的 npm 发布工作流：
+
+- 工作流文件：`.github/workflows/publish-npm.yml`
+- 触发方式：推送 `v*` tag
+- 发布前会自动校验：
+  - tag 版本号与 `package.json.version` 一致
+  - `CHANGELOG.md` 已包含对应版本标题
+  - `npm ci`、`npm test`、`npm pack --dry-run` 全部通过
+
+首次启用前，还需要在 npm 包设置里把这个仓库配置成 Trusted Publisher：
+
+- Repository：`Wangnov/gewe-openclaw`
+- Workflow filename：`publish-npm.yml`
+
+日常发版流程：
+
+```bash
+git commit -m "release: 2026.3.23"
+git tag v2026.3.23
+git push origin main v2026.3.23
+```
+
 ### npm 依赖
 
 - `zod`

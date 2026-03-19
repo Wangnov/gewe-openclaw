@@ -4,6 +4,10 @@
   "type": "module",
   "description": "OpenClaw GeWe channel plugin",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Wangnov/gewe-openclaw.git"
+  },
   "files": [
     "index.ts",
     "openclaw.plugin.json",
@@ -39,10 +43,17 @@
       "defaultChoice": "npm"
     }
   },
+  "scripts": {
+    "test": "tsx --test src/*.test.ts",
+    "release:check": "npm pack --dry-run"
+  },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.922.0",
     "@aws-sdk/s3-request-presigner": "^3.922.0",
     "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "tsx": "^4.21.0"
   },
   "peerDependencies": {
     "openclaw": ">=2026.1.29"
