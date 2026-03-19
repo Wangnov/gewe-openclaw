@@ -175,6 +175,7 @@ export type GeweCallbackPayload = {
     ToUserName?: { string?: string };
     MsgType?: number;
     Content?: { string?: string };
+    MsgSource?: string;
     CreateTime?: number;
     PushContent?: string;
   };
@@ -190,6 +191,8 @@ export type GeweInboundMessage = {
   senderId: string;
   senderName?: string;
   text: string;
+  atWxids?: string[];
+  atAll?: boolean;
   msgType: number;
   xml?: string;
   timestamp: number;
@@ -202,6 +205,7 @@ export type GeweWebhookServerOptions = {
   path: string;
   mediaPath?: string;
   secret?: string;
+  onRawPayload?: (raw: string) => void;
   onMessage: (message: GeweInboundMessage) => void | Promise<void>;
   onError?: (error: Error) => void;
   abortSignal?: AbortSignal;

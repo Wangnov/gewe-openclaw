@@ -215,3 +215,52 @@ test("GeWe webhook 会保留大整数 NewMsgId 的原始精度", async () => {
     newMessageId: "208008054840614808",
   });
 });
+
+test("GeWe webhook 会解析原生 atuserlist", async () => {
+  let received:
+    | {
+        atWxids?: string[];
+        atAll?: boolean;
+      }
+    | undefined;
+
+  const { server } = createGeweWebhookServer({
+    port: 0,
+    host: "127.0.0.1",
+    path: "/webhook",
+    onMessage: async (message) => {
+      const nativeMentioned = message as typeof message & {
+        atWxids?: string[];
+        atAll?: boolean;
+      };
+      received = {
+        atWxids: nativeMentioned.atWxids,
+        atAll: nativeMentioned.atAll,
+      };
+    },
+  });
+
+  const handler = server.listeners("request")[0];
+  assert.equal(typeof handler, "function");
+
+  const req = createRequest({
+    method: "POST",
+    url: "/webhook",
+    headers: {
+      "content-type": "application/json",
+    },
+  });
+  const res = new MockResponse();
+
+  const handling = handler(req as never, res as never);
+  req.end(
+    '{"Appid":"app-1","Wxid":"wxid_bot","Data":{"MsgId":1,"NewMsgId":2,"FromUserName":{"string":"room@chatroom"},"ToUserName":{"string":"wxid_bot"},"MsgType":1,"Content":{"string":"wxid_member:\\n@琅主bot hi"},"MsgSource":"<msgsource><atuserlist>wxid_bot,notify@all</atuserlist></msgsource>","CreateTime":1773809354}}',
+  );
+  await handling;
+
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(received, {
+    atWxids: ["wxid_bot", "notify@all"],
+    atAll: true,
+  });
+});

@@ -23,6 +23,7 @@ import type {
   GeweWebhookServerOptions,
   ResolvedGeweAccount,
 } from "./types.js";
+import { extractAtUserList } from "./xml.js";
 
 const DEFAULT_WEBHOOK_PORT = 4399;
 const DEFAULT_WEBHOOK_HOST = "0.0.0.0";
@@ -155,6 +156,8 @@ function payloadToInboundMessage(payload: GeweCallbackPayload): GeweInboundMessa
   const groupParsed = isGroupChat ? splitGroupContent(content) : { body: content };
   const senderId = (isGroupChat ? groupParsed.senderId : fromId) ?? fromId;
   const text = groupParsed.body?.trim() ?? "";
+  const atWxids = extractAtUserList(data.MsgSource);
+  const atAll = atWxids.includes("notify@all");
 
   return {
     messageId: String(msgId),
@@ -166,6 +169,8 @@ function payloadToInboundMessage(payload: GeweCallbackPayload): GeweInboundMessa
     senderId,
     senderName: resolveSenderName(data.PushContent),
     text,
+    atWxids: atWxids.length ? atWxids : undefined,
+    atAll,
     msgType,
     xml: text,
     timestamp,
@@ -178,7 +183,7 @@ export function createGeweWebhookServer(opts: GeweWebhookServerOptions): {
   start: () => Promise<void>;
   stop: () => void;
 } {
-  const { port, host, path, mediaPath, secret, onMessage, onError, abortSignal } = opts;
+  const { port, host, path, mediaPath, secret, onRawPayload, onMessage, onError, abortSignal } = opts;
 
   const server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
     if (req.url === HEALTH_PATH) {
@@ -230,6 +235,7 @@ export function createGeweWebhookServer(opts: GeweWebhookServerOptions): {
         return;
       }
 
+      onRawPayload?.(bodyResult.raw);
       const payload = parseWebhookPayload(bodyResult.raw);
       if (!payload) {
         res.writeHead(400, { "Content-Type": "application/json" });
@@ -357,6 +363,7 @@ export async function monitorGeweProvider(
     path,
     mediaPath: shouldStartMedia ? mediaPath : undefined,
     secret,
+    onRawPayload: (raw) => runtime.log?.(`[${account.accountId}] GeWe webhook raw: ${raw}`),
     onMessage: async (message) => {
       const isSelf = message.fromId === message.botWxid || message.senderId === message.botWxid;
       if (isSelf) return;

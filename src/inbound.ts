@@ -113,6 +113,25 @@ function resolveAppMsgPlaceholder(appType?: number): string {
   return typeof appType === "number" ? `<appmsg:${appType}>` : "<appmsg>";
 }
 
+function summarizeUnsupportedInboundMessage(message: GeweInboundMessage): string {
+  const preview = message.text.replace(/\s+/g, " ").trim().slice(0, 120);
+  const parts = [
+    `msgType=${message.msgType}`,
+    `from=${message.fromId}`,
+    `to=${message.toId}`,
+    `sender=${message.senderId}`,
+    `messageId=${message.messageId}`,
+    `newMessageId=${message.newMessageId}`,
+    preview ? `text=${JSON.stringify(preview)}` : undefined,
+  ];
+  return parts.filter(Boolean).join(" ");
+}
+
+function summarizeTextPreview(text: string): string | undefined {
+  const preview = text.replace(/\s+/g, " ").trim().slice(0, 160);
+  return preview ? JSON.stringify(preview) : undefined;
+}
+
 function resolveGewePairCodeCandidate(rawBody: string): string | null {
   const trimmed = rawBody.trim();
   if (!trimmed) return null;
@@ -342,7 +361,7 @@ function normalizeInboundEntry(params: {
   const { message, runtime } = params;
   const msgType = message.msgType;
   if (![1, 3, 34, 43, 49].includes(msgType)) {
-    runtime.log?.(`gewe: skip unsupported msgType ${msgType}`);
+    runtime.log?.(`gewe: skip unsupported ${summarizeUnsupportedInboundMessage(message)}`);
     return null;
   }
 
@@ -834,10 +853,33 @@ export async function handleGeweInboundBatch(params: {
     return;
   }
 
-  const mentionRegexes = core.channel.mentions.buildMentionRegexes(config as OpenClawConfig);
-  const wasAtTriggered = mentionRegexes.length
+  const route = core.channel.routing.resolveAgentRoute({
+    cfg: config as OpenClawConfig,
+    channel: CHANNEL_ID,
+    accountId: account.accountId,
+    peer: {
+      kind: isGroup ? "group" : "direct",
+      id: isGroup ? groupId ?? "" : senderId,
+    },
+  });
+  const mentionRegexes = core.channel.mentions.buildMentionRegexes(
+    config as OpenClawConfig,
+    route.agentId,
+  );
+  const nativeAtWxids = Array.from(
+    new Set(
+      entries
+        .flatMap((entry) => entry.message.atWxids ?? [])
+        .map((wxid) => wxid.trim())
+        .filter(Boolean),
+    ),
+  );
+  const nativeAtAll = entries.some((entry) => entry.message.atAll === true);
+  const nativeAtTriggered = nativeAtWxids.includes(lastMessage.botWxid.trim());
+  const regexAtTriggered = mentionRegexes.length
     ? core.channel.mentions.matchesMentionPatterns(rawBodyCandidate, mentionRegexes)
     : false;
+  const wasAtTriggered = nativeAtTriggered || regexAtTriggered;
   const latestQuote = entries.at(-1)?.quoteDetails;
   const wasQuoteTriggered = Boolean(
     latestQuote &&
@@ -862,23 +904,32 @@ export async function handleGeweInboundBatch(params: {
     commandAuthorized,
   });
   if (triggerGate.shouldSkip) {
+    const detail =
+      triggerMode === "at"
+        ? [
+            `agent=${route.agentId ?? "default"}`,
+            `wasAtTriggered=${String(wasAtTriggered)}`,
+            `nativeAtTriggered=${String(nativeAtTriggered)}`,
+            `nativeAtAll=${String(nativeAtAll)}`,
+            `regexAtTriggered=${String(regexAtTriggered)}`,
+            `wasQuoteTriggered=${String(wasQuoteTriggered)}`,
+            `mentionRegexes=${JSON.stringify(mentionRegexes.map((regex) => regex.source))}`,
+            `nativeAtWxids=${JSON.stringify(nativeAtWxids)}`,
+            summarizeTextPreview(rawBodyCandidate)
+              ? `rawBody=${summarizeTextPreview(rawBodyCandidate)}`
+              : undefined,
+          ]
+            .filter(Boolean)
+            .join(" ")
+        : undefined;
     runtime.log?.(
       isGroup
-        ? `gewe: drop group ${groupId} (trigger=${triggerMode})`
-        : `gewe: drop DM sender ${senderId} (trigger=${triggerMode})`,
+        ? `gewe: drop group ${groupId} (trigger=${triggerMode})${detail ? ` ${detail}` : ""}`
+        : `gewe: drop DM sender ${senderId} (trigger=${triggerMode})${detail ? ` ${detail}` : ""}`,
     );
     return;
   }
 
-  const route = core.channel.routing.resolveAgentRoute({
-    cfg: config as OpenClawConfig,
-    channel: CHANNEL_ID,
-    accountId: account.accountId,
-    peer: {
-      kind: isGroup ? "group" : "direct",
-      id: isGroup ? groupId ?? "" : senderId,
-    },
-  });
   const storePath = core.channel.session.resolveStorePath(config.session?.store, {
     agentId: route.agentId,
   });

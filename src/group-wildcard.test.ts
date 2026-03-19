@@ -23,6 +23,8 @@ function createMessage(overrides: Partial<GeweInboundMessage> = {}): GeweInbound
     senderId: overrides.senderId ?? "wxid_sender",
     senderName: overrides.senderName ?? "sender",
     text: overrides.text ?? "hello",
+    atWxids: overrides.atWxids,
+    atAll: overrides.atAll,
     msgType: overrides.msgType ?? 1,
     xml: overrides.xml,
     timestamp: overrides.timestamp ?? Date.now(),
@@ -254,4 +256,167 @@ test("GeWe 群 trigger.mode=quote 不会因引用其他成员消息而触发", a
   });
 
   assert.equal(capture.dispatches.length, 0);
+});
+
+test("GeWe 群 at 触发会把 route.agentId 传给 mention regex 构造器", async () => {
+  const capture = {
+    dispatches: [] as Array<{ ctx: Record<string, unknown>; replyOptions: Record<string, unknown> }>,
+  };
+
+  setGeweRuntime({
+    channel: {
+      activity: {
+        record() {},
+      },
+      commands: {
+        shouldHandleTextCommands: () => false,
+      },
+      text: {
+        hasControlCommand: () => false,
+      },
+      mentions: {
+        buildMentionRegexes: (_cfg: unknown, agentId?: string) =>
+          agentId === "agent-1" ? [/@小助手/i] : [],
+        matchesMentionPatterns: (text: string, patterns: RegExp[]) =>
+          patterns.some((pattern) => pattern.test(text)),
+      },
+      routing: {
+        resolveAgentRoute: () => ({
+          agentId: "agent-1",
+          accountId: "acct-1",
+          sessionKey: "session-1",
+          baseSessionKey: "session-1",
+          peer: { kind: "group", id: "room@chatroom" },
+          chatType: "group",
+          from: "sender",
+          to: "room@chatroom",
+        }),
+      },
+      session: {
+        resolveStorePath: () => "/tmp/gewe-session-store.json",
+        readSessionUpdatedAt: () => undefined,
+        recordInboundSession: async () => {},
+      },
+      reply: {
+        resolveEnvelopeFormatOptions: () => ({}),
+        formatAgentEnvelope: ({ body }: { body: string }) => body,
+        finalizeInboundContext: (ctx: Record<string, unknown>) => ctx,
+        dispatchReplyWithBufferedBlockDispatcher: async (params: {
+          ctx: Record<string, unknown>;
+          replyOptions: Record<string, unknown>;
+        }) => {
+          capture.dispatches.push({
+            ctx: params.ctx,
+            replyOptions: params.replyOptions,
+          });
+        },
+      },
+      pairing: {
+        readAllowFromStore: async () => [],
+        upsertPairingRequest: async () => ({ code: "123456", created: false }),
+        buildPairingReply: () => "pairing",
+      },
+    },
+  } as never);
+
+  await handleGeweInboundBatch({
+    messages: [createMessage({ text: "@小助手 你好" })],
+    account: createAccount({
+      groupPolicy: "open",
+    }),
+    config: {} as CoreConfig,
+    runtime: TEST_RUNTIME,
+    downloadQueue: new GeweDownloadQueue({ minDelayMs: 0, maxDelayMs: 0 }),
+  });
+
+  assert.equal(capture.dispatches.length, 1);
+});
+
+test("GeWe 群 trigger.mode=at 在原生 atuserlist 命中机器人时会触发", async () => {
+  const capture = {
+    dispatches: [] as Array<{ ctx: Record<string, unknown>; replyOptions: Record<string, unknown> }>,
+  };
+  installRuntime(capture);
+
+  await handleGeweInboundBatch({
+    messages: [
+      createMessage({
+        text: "@琅主bot hi",
+        atWxids: ["wxid_bot"],
+      }),
+    ],
+    account: createAccount({
+      groupPolicy: "open",
+      groups: {
+        "room@chatroom": {
+          trigger: { mode: "at" },
+        },
+      },
+    }),
+    config: {} as CoreConfig,
+    runtime: TEST_RUNTIME,
+    downloadQueue: new GeweDownloadQueue({ minDelayMs: 0, maxDelayMs: 0 }),
+  });
+
+  assert.equal(capture.dispatches.length, 1);
+});
+
+test("GeWe 群 trigger.mode=at 不会因 notify@all 单独出现而触发", async () => {
+  const capture = {
+    dispatches: [] as Array<{ ctx: Record<string, unknown>; replyOptions: Record<string, unknown> }>,
+  };
+  installRuntime(capture);
+
+  await handleGeweInboundBatch({
+    messages: [
+      createMessage({
+        text: "@所有人 hi",
+        atWxids: ["notify@all"],
+        atAll: true,
+      }),
+    ],
+    account: createAccount({
+      groupPolicy: "open",
+      groups: {
+        "room@chatroom": {
+          trigger: { mode: "at" },
+        },
+      },
+    }),
+    config: {} as CoreConfig,
+    runtime: TEST_RUNTIME,
+    downloadQueue: new GeweDownloadQueue({ minDelayMs: 0, maxDelayMs: 0 }),
+  });
+
+  assert.equal(capture.dispatches.length, 0);
+});
+
+test("GeWe 群 trigger.mode=at 在同时 @全体 和 @机器人时仍会触发", async () => {
+  const capture = {
+    dispatches: [] as Array<{ ctx: Record<string, unknown>; replyOptions: Record<string, unknown> }>,
+  };
+  installRuntime(capture);
+
+  await handleGeweInboundBatch({
+    messages: [
+      createMessage({
+        text: "@所有人 @琅主bot hi",
+        atWxids: ["notify@all", "wxid_bot"],
+        atAll: true,
+      }),
+    ],
+    account: createAccount({
+      groupPolicy: "open",
+      groups: {
+        "room@chatroom": {
+          trigger: { mode: "at" },
+        },
+      },
+    }),
+    config: {} as CoreConfig,
+    runtime: TEST_RUNTIME,
+    downloadQueue: new GeweDownloadQueue({ minDelayMs: 0, maxDelayMs: 0 }),
+  });
+
+  assert.equal(capture.dispatches.length, 1);
 });

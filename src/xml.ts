@@ -120,6 +120,24 @@ export function extractXmlTag(xml: string, tag: string): string | undefined {
   return decodeEntities(raw);
 }
 
+export function extractAtUserList(xml?: string): string[] {
+  const atUserList = xml?.trim() ? extractXmlTag(xml, "atuserlist") : undefined;
+  if (!atUserList) return [];
+
+  const seen = new Set<string>();
+  const values = atUserList
+    .split(/[,\uFF0C;\s]+/)
+    .map((value) => value.trim())
+    .filter(Boolean)
+    .filter((value) => {
+      if (seen.has(value)) return false;
+      seen.add(value);
+      return true;
+    });
+
+  return values;
+}
+
 export function extractAppMsgType(xml: string): number | undefined {
   const match = /<appmsg[\s\S]*?<type>(\d+)<\/type>/i.exec(xml);
   if (!match?.[1]) return undefined;

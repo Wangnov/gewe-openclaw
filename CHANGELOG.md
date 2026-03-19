@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2026.3.24] - 2026-03-19
+
+### Changed
+
+- GeWe webhook 入站现在会保留微信原生 `@` 元数据，解析 `MsgSource.atuserlist` 并透传到后续触发链路。
+- 群聊 `trigger.mode=at` 的诊断日志现在会同时输出原生 `@` 命中状态、`@全体` 标记和 regex 兜底结果，方便排查触发失败原因。
+
+### Fixed
+
+- 修复群聊 `trigger.mode=at` 仅依赖 mention regex 时，原生 `@机器人` 无法触发的问题；现在会优先根据微信原生 `atuserlist` 判定。
+- 修复 `@全体` 被误当作机器人提及的风险；只有 `notify@all` 单独出现时不会触发，而 `@全体 + @机器人` 仍会正常触发。
+
 ## [2026.3.23] - 2026-03-19
 
 ### Added
