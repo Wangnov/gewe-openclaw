@@ -258,6 +258,45 @@ test("GeWe 群 trigger.mode=quote 不会因引用其他成员消息而触发", a
   assert.equal(capture.dispatches.length, 0);
 });
 
+test("GeWe 群 trigger.mode=quote 会识别真实 GeWe 群引用里的 chatusr 机器人 wxid", async () => {
+  const capture = { dispatches: [] as Array<{ ctx: Record<string, unknown>; replyOptions: Record<string, unknown> }> };
+  installRuntime(capture);
+  const xml = [
+    "<?xml version=\"1.0\"?>",
+    "<msg>",
+    "<appmsg appid=\"\" sdkver=\"0\">",
+    "<title>你好啊</title>",
+    "<type>57</type>",
+    "<refermsg>",
+    "<chatusr>wxid_bot</chatusr>",
+    "<type>49</type>",
+    "<displayname>GeWe Bot</displayname>",
+    "<svrid>2046112977245433862</svrid>",
+    "<fromusr>room@chatroom</fromusr>",
+    "<content>&lt;msg&gt;&lt;appmsg&gt;&lt;title&gt;hi&lt;/title&gt;&lt;/appmsg&gt;&lt;/msg&gt;</content>",
+    "</refermsg>",
+    "</appmsg>",
+    "</msg>",
+  ].join("");
+
+  await handleGeweInboundBatch({
+    messages: [createMessage({ msgType: 49, xml })],
+    account: createAccount({
+      groupPolicy: "open",
+      groups: {
+        "room@chatroom": {
+          trigger: { mode: "quote" },
+        },
+      },
+    }),
+    config: {} as CoreConfig,
+    runtime: TEST_RUNTIME,
+    downloadQueue: new GeweDownloadQueue({ minDelayMs: 0, maxDelayMs: 0 }),
+  });
+
+  assert.equal(capture.dispatches.length, 1);
+});
+
 test("GeWe 群 at 触发会把 route.agentId 传给 mention regex 构造器", async () => {
   const capture = {
     dispatches: [] as Array<{ ctx: Record<string, unknown>; replyOptions: Record<string, unknown> }>,

@@ -113,6 +113,22 @@ function resolveAppMsgPlaceholder(appType?: number): string {
   return typeof appType === "number" ? `<appmsg:${appType}>` : "<appmsg>";
 }
 
+function isQuoteFromBot(params: {
+  quoteDetails?: GeweQuoteDetails;
+  isGroup: boolean;
+  botWxid: string;
+}): boolean {
+  const quoteDetails = params.quoteDetails;
+  if (!quoteDetails) return false;
+  if (!params.isGroup) return true;
+
+  const botWxid = params.botWxid.trim();
+  if (!botWxid) return false;
+  return [quoteDetails.fromUsr, quoteDetails.chatUsr].some(
+    (value) => value?.trim() === botWxid,
+  );
+}
+
 function summarizeUnsupportedInboundMessage(message: GeweInboundMessage): string {
   const preview = message.text.replace(/\s+/g, " ").trim().slice(0, 120);
   const parts = [
@@ -881,10 +897,11 @@ export async function handleGeweInboundBatch(params: {
     : false;
   const wasAtTriggered = nativeAtTriggered || regexAtTriggered;
   const latestQuote = entries.at(-1)?.quoteDetails;
-  const wasQuoteTriggered = Boolean(
-    latestQuote &&
-      (!isGroup || latestQuote.fromUsr?.trim() === lastMessage.botWxid.trim()),
-  );
+  const wasQuoteTriggered = isQuoteFromBot({
+    quoteDetails: latestQuote,
+    isGroup,
+    botWxid: lastMessage.botWxid,
+  });
   const triggerMode = isGroup
     ? resolveGeweGroupTriggerMode({
         groupConfig: groupMatch?.groupConfig,
@@ -921,7 +938,18 @@ export async function handleGeweInboundBatch(params: {
           ]
             .filter(Boolean)
             .join(" ")
-        : undefined;
+        : triggerMode === "quote"
+          ? [
+              `wasQuoteTriggered=${String(wasQuoteTriggered)}`,
+              latestQuote?.fromUsr ? `quoteFromUsr=${JSON.stringify(latestQuote.fromUsr)}` : undefined,
+              latestQuote?.chatUsr ? `quoteChatUsr=${JSON.stringify(latestQuote.chatUsr)}` : undefined,
+              summarizeTextPreview(rawBodyCandidate)
+                ? `rawBody=${summarizeTextPreview(rawBodyCandidate)}`
+                : undefined,
+            ]
+              .filter(Boolean)
+              .join(" ")
+          : undefined;
     runtime.log?.(
       isGroup
         ? `gewe: drop group ${groupId} (trigger=${triggerMode})${detail ? ` ${detail}` : ""}`
