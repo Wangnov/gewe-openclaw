@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2026.3.26] - 2026-03-20
+
+### Added
+
+- 新增 `gewe_issue_group_claim_code` 工具，已配对的 GeWe 私聊发送者现在可以直接申请短时、单次使用的 8 位群认领码。
+
+### Changed
+
+- GeWe 的群接入说明已改成面向普通用户的“两步走”流程：先私聊配对，再到目标群完成认领。
+- `gewe_contacts`、`gewe_groups`、`gewe_moments`、`gewe_personal`、`gewe_manage_group_allowlist`、`gewe_sync_group_binding` 和 `gewe_issue_group_claim_code` 现在会在已配对的 GeWe 私聊会话中可见，不再要求全局 owner 权限。
+- GeWe 群认领默认推荐在群里直接发送 8 位裸码，不再要求 `@机器人` 或 `认领码:` 前缀。
+
+### Fixed
+
+- 修复 GeWe 群消息仍会把私聊 pairing store 当成群权限来源的问题；群权限现在只看 `groupAllowFrom` 和 `groups.<groupId>.allowFrom`。
+- 修复新群认领消息在 allowlist 拦截前无法被正确消费的问题；现在会先识别并消费认领码，再写回当前群配置。
+- 修复 GeWe 工具把原始 Zod schema 暴露给模型时可能触发 `upstream request failed` 的问题；现在统一向模型暴露普通 JSON Schema。
+- 修复 GeWe 引用回复里的原生 `@` 透传位置；`postAppMsg` 现在会把 `ats` 放在请求顶层，而不是写进 `refermsg.msgsource`。
+
 ## [2026.3.25] - 2026-03-19
 
 ### Changed
