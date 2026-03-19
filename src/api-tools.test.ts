@@ -112,6 +112,53 @@ test("GeWe 插件会注册 agent-facing API 工具", () => {
   assert.deepEqual(toolNames, ["gewe_contacts", "gewe_groups", "gewe_moments", "gewe_personal"]);
 });
 
+test("GeWe agent-facing API 工具对已配对私聊发送者不再要求 owner 权限", () => {
+  const { api, registeredTools } = createApi({});
+  plugin.register?.(api as never);
+
+  const tools = ["gewe_contacts", "gewe_groups", "gewe_moments", "gewe_personal"].map((name) =>
+    resolveRegisteredTool({
+      registeredTools,
+      name,
+      ctx: {
+        config: {},
+        senderIsOwner: false,
+        messageChannel: "gewe-openclaw",
+        sessionKey: "agent:ops:gewe-openclaw:direct:wxid_direct",
+        requesterSenderId: "wxid_direct",
+      },
+    }),
+  );
+
+  assert.deepEqual(
+    tools.map((tool) => tool.ownerOnly === true),
+    [false, false, false, false],
+  );
+});
+
+test("GeWe agent-facing API 工具不会对非 owner 的群聊会话暴露", () => {
+  const { api, registeredTools } = createApi({});
+  plugin.register?.(api as never);
+
+  for (const name of ["gewe_contacts", "gewe_groups", "gewe_moments", "gewe_personal"]) {
+    assert.throws(
+      () =>
+        resolveRegisteredTool({
+          registeredTools,
+          name,
+          ctx: {
+            config: {},
+            senderIsOwner: false,
+            messageChannel: "gewe-openclaw",
+            sessionKey: "agent:ops:gewe-openclaw:group:room@chatroom",
+            requesterSenderId: "wxid_member",
+          },
+        }),
+      /tool not registered:/,
+    );
+  }
+});
+
 test("GeWe contacts 工具会从当前私聊上下文推断 brief 目标", async () => {
   const config = {
     channels: {

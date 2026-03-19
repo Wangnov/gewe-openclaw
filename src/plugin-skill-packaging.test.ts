@@ -42,6 +42,11 @@ test("gewe agent tools skill exists with expected tool guidance", () => {
   assert.match(content, /gewe_groups/);
   assert.match(content, /gewe_moments/);
   assert.match(content, /gewe_personal/);
+  assert.match(content, /gewe_issue_group_claim_code/);
+  assert.match(content, /新群/);
+  assert.match(content, /认领码/);
+  assert.match(content, /不要先让用户手填群 id/i);
+  assert.match(content, /不要加.*认领码.*前缀/);
   assert.match(content, /当前私聊会话/);
   assert.match(content, /当前群会话/);
   assert.match(content, /会改真实微信状态/);

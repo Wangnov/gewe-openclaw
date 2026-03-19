@@ -4,6 +4,7 @@ import { createGeweApiTools } from "./src/api-tools.js";
 import { gewePlugin } from "./src/channel.js";
 import { createGeweManageGroupAllowlistTool } from "./src/group-allowlist-tool.js";
 import { createGeweSyncGroupBindingTool } from "./src/group-binding-tool.js";
+import { createGeweIssueGroupClaimCodeTool } from "./src/group-claim-tool.js";
 import { setGeweRuntime } from "./src/runtime.js";
 
 function emptyPluginConfigSchema() {
@@ -44,6 +45,7 @@ const plugin = {
     api.registerChannel({ plugin: gewePlugin });
     api.registerTool((ctx) => createGeweApiTools(ctx));
     api.registerTool((ctx) => createGeweSyncGroupBindingTool(ctx));
+    api.registerTool((ctx) => createGeweIssueGroupClaimCodeTool(ctx));
     api.registerTool((ctx) =>
       createGeweManageGroupAllowlistTool(ctx, {
         readConfig: () => api.runtime.config.loadConfig() as never,

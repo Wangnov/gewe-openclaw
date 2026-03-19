@@ -567,13 +567,10 @@ export function logInboundDrop(params: {
 }
 
 export function buildChannelConfigSchema(schema: ZodTypeAny): ChannelConfigSchema {
-  const schemaWithJson = schema as ZodSchemaWithToJsonSchema;
-  if (typeof schemaWithJson.toJSONSchema === "function") {
+  const jsonSchema = buildJsonSchema(schema);
+  if (jsonSchema) {
     return {
-      schema: schemaWithJson.toJSONSchema({
-        target: "draft-07",
-        unrepresentable: "any",
-      }) as Record<string, unknown>,
+      schema: jsonSchema,
     };
   }
   return {
@@ -582,6 +579,20 @@ export function buildChannelConfigSchema(schema: ZodTypeAny): ChannelConfigSchem
       additionalProperties: true,
     },
   };
+}
+
+export function buildJsonSchema(schema: unknown): Record<string, unknown> | null {
+  const schemaWithJson = schema as ZodSchemaWithToJsonSchema | null | undefined;
+  if (schemaWithJson && typeof schemaWithJson.toJSONSchema === "function") {
+    return schemaWithJson.toJSONSchema({
+      target: "draft-07",
+      unrepresentable: "any",
+    }) as Record<string, unknown>;
+  }
+  if (schema && typeof schema === "object" && !Array.isArray(schema)) {
+    return schema as Record<string, unknown>;
+  }
+  return null;
 }
 
 export const DmPolicySchema = z.enum(["pairing", "allowlist", "open", "disabled"]);

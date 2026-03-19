@@ -95,7 +95,7 @@ openclaw onboard
 - `s3PublicBaseUrl`：`public` 模式下用于拼接可访问 URL（必填）。
 - `s3PresignExpiresSec`：`presigned` 模式签名有效期（默认 3600 秒）。
 - `s3KeyPrefix`：对象 key 前缀（默认 `gewe-openclaw/outbound`）。
-- `allowFrom`：允许私聊触发的微信 ID（或在群里走 allowlist 规则）。
+- `allowFrom`：允许私聊触发的微信 ID；不再隐式用于群聊权限。
 - `voiceAutoConvert`：自动将音频转为 silk（默认开启；设为 `false` 可关闭）。
 - `silkAutoDownload`：自动下载 `rust-silk`（默认开启；可关闭后自行配置 `voiceSilkPath` / `voiceDecodePath`）。
 - `silkVersion`：自动下载的 `rust-silk` 版本（`latest` 会自动清理旧版本）。
@@ -238,6 +238,11 @@ GeWe 现在补齐了目录、标准 allowlist 适配和状态摘要。
 - 私聊：`allowFrom`
 - 群发言人：`groupAllowFrom`
 
+注意：
+
+- 私聊 `pairing` 只会把对方加入私聊 allowlist，不会自动给任何群开权限。
+- 群聊权限只看 `groupAllowFrom` 和 `groups.<groupId>.allowFrom`。
+
 如果你要管理“某一个群自己的 `groups.<groupId>.allowFrom` 覆盖”，请用插件工具：
 
 - `gewe_manage_group_allowlist`
@@ -259,6 +264,75 @@ GeWe 现在补齐了目录、标准 allowlist 适配和状态摘要。
   "entries": ["wxid_admin_1", "wxid_admin_2"]
 }
 ```
+
+### 认证方式
+
+如果你是第一次用，可以把它理解成两步：
+
+1. 先在私聊里完成配对
+2. 再在要使用的群里完成认领
+
+为什么要分成两步：
+
+- 私聊配对成功，只表示“你可以在私聊里跟机器人说话了”
+- 这一步不会让机器人自动在所有群里生效
+- 群认领是第二次确认，表示“这个群也允许你使用机器人”
+- 这样做是为了避免机器人一进公开群就被任何人直接触发
+
+你实际要做的事很简单：
+
+1. 先和机器人私聊，完成配对
+2. 再在私聊里让机器人给你一个 8 位认领码
+3. 把机器人拉进目标群
+4. 在目标群里直接发这 8 位认领码
+5. 收到成功提示后，这个群就接入完成了
+
+举个例子：
+
+- 机器人在私聊里给你：`MJSQ2G9H`
+- 你把机器人拉进目标群
+- 你在群里直接发：`MJSQ2G9H`
+
+几个容易搞混的点：
+
+- 群里不需要 `@机器人`
+- 最推荐的发法就是只发这 8 位码
+- `认领码: MJSQ2G9H` 这种写法也能识别，但默认不推荐
+- 认领码有时效，而且只能用一次
+- 这个码是谁拿到的，就只能由谁来完成这次认领
+
+认领成功后会发生什么：
+
+- 机器人会记住“你可以在这个群里使用它了”
+- 只影响当前这个群
+- 不会顺手把别的群也打开
+- 不会自动帮你创建额外的绑定配置
+
+如果你会自己改配置文件：
+
+- 认领成功后，插件会把当前发码者写入 `groups.<groupId>.allowFrom`
+
+### 群认领
+
+如果是一个还没放行的新群，推荐流程是：
+
+1. 先在已配对的私聊里调用 `gewe_issue_group_claim_code`
+2. 把机器人拉进目标群
+3. 在目标群里只发送这 8 位认领码：`XXXXXXXX`
+
+推荐默认话术：
+
+- 私聊里直接把 8 位码发给用户，不要包装成 `认领码: XXXXXXXX`
+- 群里也只发这 8 位码，不要加 `认领码:` 前缀
+
+认领成功后，插件会把“当前发码者”写入该群的 `groups.<groupId>.allowFrom`。
+
+默认特性：
+
+- 认领码短时有效、单次使用
+- 只能由签发它的那个发码者在群里使用
+- 只给当前群开权限，不会改顶层 `groupAllowFrom`
+- 不会自动创建 `bindings[]`
 
 如果你就在目标群里调用，`groupId` 可以省略；工具会自动用当前群。
 

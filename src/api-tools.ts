@@ -65,7 +65,7 @@ import {
   uploadSnsVideoGewe,
 } from "./moments-api.js";
 import { normalizeGeweMessagingTarget } from "./normalize.js";
-import { normalizeAccountId, type OpenClawConfig } from "./openclaw-compat.js";
+import { buildJsonSchema, normalizeAccountId, type OpenClawConfig } from "./openclaw-compat.js";
 import {
   getProfileGewe,
   getQrCodeGewe,
@@ -74,6 +74,7 @@ import {
   updateHeadImgGewe,
   updateProfileGewe,
 } from "./personal-api.js";
+import { shouldExposeGeweAgentTool } from "./tool-visibility.js";
 import type { CoreConfig, ResolvedGeweAccount } from "./types.js";
 
 const ContactsActionSchema = z.enum([
@@ -242,6 +243,11 @@ const PersonalToolSchema = z
     open: z.boolean().optional(),
   })
   .strict();
+
+const ContactsToolParameters = buildJsonSchema(ContactsToolSchema) ?? { type: "object" };
+const GroupsToolParameters = buildJsonSchema(GroupsToolSchema) ?? { type: "object" };
+const MomentsToolParameters = buildJsonSchema(MomentsToolSchema) ?? { type: "object" };
+const PersonalToolParameters = buildJsonSchema(PersonalToolSchema) ?? { type: "object" };
 
 type ContactsToolParams = z.infer<typeof ContactsToolSchema>;
 type GroupsToolParams = z.infer<typeof GroupsToolSchema>;
@@ -1150,15 +1156,17 @@ async function executePersonalTool(
   }
 }
 
-export function createGeweApiTools(ctx: OpenClawPluginToolContext): AnyAgentTool[] {
+export function createGeweApiTools(ctx: OpenClawPluginToolContext): AnyAgentTool[] | null {
+  if (!shouldExposeGeweAgentTool(ctx)) {
+    return null;
+  }
   return [
     {
       name: "gewe_contacts",
       label: "GeWe Contacts",
       description:
         "GeWe contacts operations. Actions: list, list_cache, brief, detail, search, search_im, im_detail, check_relation, set_remark, set_only_chat, delete, add, add_im, sync_im, phones_get, phones_upload.",
-      ownerOnly: true,
-      parameters: ContactsToolSchema,
+      parameters: ContactsToolParameters,
       execute: async (_toolCallId, rawParams) => {
         const params = ContactsToolSchema.parse(rawParams ?? {});
         try {
@@ -1184,8 +1192,7 @@ export function createGeweApiTools(ctx: OpenClawPluginToolContext): AnyAgentTool
       label: "GeWe Groups",
       description:
         "GeWe group operations. Actions: info, announcement, members, member_detail, qr_code, set_self_nickname, rename, set_remark, create, remove_members, agree_join, join_via_qr, add_member_as_friend, approve_join_request, admin_operate, save_to_contacts, pin, disband, set_silence, set_announcement, quit, invite.",
-      ownerOnly: true,
-      parameters: GroupsToolSchema,
+      parameters: GroupsToolParameters,
       execute: async (_toolCallId, rawParams) => {
         const params = GroupsToolSchema.parse(rawParams ?? {});
         try {
@@ -1211,8 +1218,7 @@ export function createGeweApiTools(ctx: OpenClawPluginToolContext): AnyAgentTool
       label: "GeWe Moments",
       description:
         "GeWe Moments operations. Actions: list_self, list_contact, detail, download_video, upload_image, upload_video, delete, post_text, post_image, post_video, post_link, set_stranger_visibility, set_visible_scope, set_privacy, like, comment, forward.",
-      ownerOnly: true,
-      parameters: MomentsToolSchema,
+      parameters: MomentsToolParameters,
       execute: async (_toolCallId, rawParams) => {
         const params = MomentsToolSchema.parse(rawParams ?? {});
         try {
@@ -1238,8 +1244,7 @@ export function createGeweApiTools(ctx: OpenClawPluginToolContext): AnyAgentTool
       label: "GeWe Personal",
       description:
         "GeWe personal-account operations. Actions: profile, qrcode, safety_info, update_profile, update_avatar, privacy.",
-      ownerOnly: true,
-      parameters: PersonalToolSchema,
+      parameters: PersonalToolParameters,
       execute: async (_toolCallId, rawParams) => {
         const params = PersonalToolSchema.parse(rawParams ?? {});
         try {

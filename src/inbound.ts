@@ -14,6 +14,7 @@ import {
   buildGeweInboundMediaPayload,
   buildGeweInboundMessageMeta,
 } from "./inbound-batch.js";
+import { ensureGeweWriteSection } from "./config-edit.js";
 import type { GeweDownloadQueue } from "./download-queue.js";
 import { downloadGeweFile, downloadGeweImage, downloadGeweVideo, downloadGeweVoice } from "./download.js";
 import { deliverGewePayload } from "./delivery.js";
@@ -21,7 +22,11 @@ import { applyGeweReplyModeToPayload, resolveGeweReplyOptions } from "./reply-op
 import { rememberGeweDirectoryObservation } from "./directory-cache.js";
 import { getGeweRuntime } from "./runtime.js";
 import { ensureRustSilkBinary } from "./silk.js";
-import { readGeweAllowFromStore, redeemGewePairCode } from "./pairing-store.js";
+import {
+  readGeweAllowFromStore,
+  redeemGeweGroupClaimCode,
+  redeemGewePairCode,
+} from "./pairing-store.js";
 import {
   normalizeGeweAllowlist,
   resolveGeweAllowlistMatch,
@@ -100,6 +105,12 @@ const GEWE_PAIR_CODE_REGEX = /^[A-HJ-NP-Z2-9]{8}$/i;
 const GEWE_PAIR_CODE_PREFIX_REGEX = /^配对码\s*[:：]?\s*([A-HJ-NP-Z2-9]{8})$/i;
 const GEWE_PAIR_CODE_SUCCESS_REPLY = "配对成功，已加入允许列表。请重新发送上一条消息。";
 const GEWE_PAIR_CODE_INVALID_REPLY = "配对码无效或已过期。";
+const GEWE_GROUP_CLAIM_CODE_PREFIX_REGEX = /^(?:群)?认领码\s*[:：]?\s*([A-HJ-NP-Z2-9]{8})$/i;
+const GEWE_GROUP_CLAIM_CODE_INLINE_REGEX = /(?:^|\s)(?:群)?认领码\s*[:：]?\s*([A-HJ-NP-Z2-9]{8})(?=$|\s)/i;
+const GEWE_GROUP_CLAIM_CODE_SUCCESS_REPLY =
+  "当前群认领成功，已授权你在本群触发机器人。请重新发送上一条消息。";
+const GEWE_GROUP_CLAIM_CODE_INVALID_REPLY = "认领码无效、已过期，或不属于当前发送者。";
+const GEWE_GROUP_CLAIM_CODE_DISABLED_REPLY = "当前群已被显式禁用，无法认领。";
 
 function resolveMediaPlaceholder(msgType: number): string {
   if (msgType === 3) return "<media:image>";
@@ -156,6 +167,63 @@ function resolveGewePairCodeCandidate(rawBody: string): string | null {
   }
   const prefixed = trimmed.match(GEWE_PAIR_CODE_PREFIX_REGEX);
   return prefixed?.[1]?.toUpperCase() ?? null;
+}
+
+function resolveGeweGroupClaimCodeCandidate(rawBody: string): string | null {
+  const trimmed = rawBody.trim();
+  if (!trimmed) return null;
+  if (GEWE_PAIR_CODE_REGEX.test(trimmed)) {
+    return trimmed.toUpperCase();
+  }
+
+  const candidateLines = trimmed
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      let next = line;
+      while (next.startsWith("@")) {
+        next = next.replace(/^@\S+\s*/u, "").trim();
+      }
+      return next;
+    });
+
+  for (const line of candidateLines) {
+    if (!line) {
+      continue;
+    }
+    if (GEWE_PAIR_CODE_REGEX.test(line)) {
+      return line.toUpperCase();
+    }
+    const prefixed = line.match(GEWE_GROUP_CLAIM_CODE_PREFIX_REGEX);
+    if (prefixed?.[1]) {
+      return prefixed[1].toUpperCase();
+    }
+  }
+
+  const inline = trimmed.match(GEWE_GROUP_CLAIM_CODE_INLINE_REGEX);
+  return inline?.[1]?.toUpperCase() ?? null;
+}
+
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
+  }
+  return value as Record<string, unknown>;
+}
+
+function dedupeAllowEntries(values: readonly unknown[]): string[] {
+  const result: string[] = [];
+  const seen = new Set<string>();
+  for (const value of values) {
+    const normalized = String(value ?? "").trim().replace(/^(?:gewe|wechat|wx):/i, "");
+    if (!normalized || seen.has(normalized)) {
+      continue;
+    }
+    seen.add(normalized);
+    result.push(normalized);
+  }
+  return result;
 }
 
 function looksLikeSilkVoice(params: {
@@ -727,6 +795,16 @@ export async function handleGeweInboundBatch(params: {
     senderName,
     groupId,
   });
+  const nativeAtWxids = Array.from(
+    new Set(
+      entries
+        .flatMap((entry) => entry.message.atWxids ?? [])
+        .map((wxid) => wxid.trim())
+        .filter(Boolean),
+    ),
+  );
+  const nativeAtAll = entries.some((entry) => entry.message.atAll === true);
+  const nativeAtTriggered = nativeAtWxids.includes(lastMessage.botWxid.trim());
 
   const dmPolicy = account.config.dmPolicy ?? "pairing";
   const defaultGroupPolicy = config.channels?.defaults?.groupPolicy;
@@ -759,6 +837,78 @@ export async function handleGeweInboundBatch(params: {
       })
     : undefined;
 
+  if (isGroup) {
+    const groupClaimCode = resolveGeweGroupClaimCodeCandidate(rawBodyCandidate);
+    if (groupClaimCode) {
+      const latestCfg = (core.config.loadConfig?.() as CoreConfig | undefined) ?? config;
+      const writeConfigFile = core.config.writeConfigFile?.bind(core.config);
+      const write =
+        groupId && writeConfigFile
+          ? ensureGeweWriteSection({
+              cfg: latestCfg as OpenClawConfig,
+              accountId: account.accountId,
+            })
+          : null;
+      const groups =
+        write && asRecord(write.target.groups)
+          ? (asRecord(write.target.groups) as Record<string, Record<string, unknown>>)
+          : ({} as Record<string, Record<string, unknown>>);
+      const currentGroup = groupId ? asRecord(groups[groupId]) ?? {} : {};
+      const isDisabled =
+        groupPolicy === "disabled" ||
+        groupMatch?.groupConfig?.enabled === false ||
+        groupMatch?.wildcardConfig?.enabled === false ||
+        currentGroup.enabled === false;
+      const claimReply =
+        !groupId || !write || !writeConfigFile
+          ? GEWE_GROUP_CLAIM_CODE_INVALID_REPLY
+          : isDisabled
+            ? GEWE_GROUP_CLAIM_CODE_DISABLED_REPLY
+            : await (async () => {
+            const redeemed = await redeemGeweGroupClaimCode({
+              accountId: account.accountId,
+              code: groupClaimCode,
+              issuerId: senderId,
+              groupId,
+            }).catch((err) => {
+              runtime.error?.(
+                `gewe: group claim code redeem failed for ${senderId} in ${groupId}: ${String(err)}`,
+              );
+              return null;
+            });
+            if (!redeemed) {
+              return GEWE_GROUP_CLAIM_CODE_INVALID_REPLY;
+            }
+            write.target.groups = groups;
+            const allowFrom = dedupeAllowEntries([
+              ...(Array.isArray(currentGroup.allowFrom) ? currentGroup.allowFrom : []),
+              senderId,
+            ]);
+            groups[groupId] = {
+              ...currentGroup,
+              allowFrom,
+            };
+            await writeConfigFile(write.nextCfg);
+            return GEWE_GROUP_CLAIM_CODE_SUCCESS_REPLY;
+          })();
+
+      try {
+        await deliverGewePayload({
+          payload: {
+            text: claimReply,
+          },
+          account,
+          cfg: config as OpenClawConfig,
+          toWxid,
+          statusSink: (patch) => statusSink?.(patch),
+        });
+      } catch (err) {
+        runtime.error?.(`gewe: group claim code reply failed for ${senderId}: ${String(err)}`);
+      }
+      return;
+    }
+  }
+
   if (isGroup && groupMatch && !groupMatch.allowed) {
     runtime.log?.(`gewe: drop group ${groupId} (not allowlisted)`);
     return;
@@ -772,10 +922,9 @@ export async function handleGeweInboundBatch(params: {
   const wildcardRoomAllowFrom = normalizeGeweAllowlist(groupMatch?.wildcardConfig?.allowFrom);
   const roomAllowFrom =
     directRoomAllowFrom.length > 0 ? directRoomAllowFrom : wildcardRoomAllowFrom;
-  const baseGroupAllowFrom =
-    configGroupAllowFrom.length > 0 ? configGroupAllowFrom : configAllowFrom;
+  const baseGroupAllowFrom = configGroupAllowFrom;
   const effectiveAllowFrom = [...configAllowFrom, ...storeAllowList].filter(Boolean);
-  const effectiveGroupAllowFrom = [...baseGroupAllowFrom, ...storeAllowList].filter(Boolean);
+  const effectiveGroupAllowFrom = [...baseGroupAllowFrom].filter(Boolean);
 
   const allowTextCommands = core.channel.commands.shouldHandleTextCommands({
     cfg: config as OpenClawConfig,
@@ -883,16 +1032,6 @@ export async function handleGeweInboundBatch(params: {
     config as OpenClawConfig,
     route.agentId,
   );
-  const nativeAtWxids = Array.from(
-    new Set(
-      entries
-        .flatMap((entry) => entry.message.atWxids ?? [])
-        .map((wxid) => wxid.trim())
-        .filter(Boolean),
-    ),
-  );
-  const nativeAtAll = entries.some((entry) => entry.message.atAll === true);
-  const nativeAtTriggered = nativeAtWxids.includes(lastMessage.botWxid.trim());
   const regexAtTriggered = mentionRegexes.length
     ? core.channel.mentions.matchesMentionPatterns(rawBodyCandidate, mentionRegexes)
     : false;

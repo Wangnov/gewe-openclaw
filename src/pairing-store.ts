@@ -7,9 +7,11 @@ import { CHANNEL_ID, stripChannelPrefix } from "./constants.js";
 import { resolveOpenClawStateDir } from "./state-paths.js";
 
 const PAIR_CODE_TTL_MS = 60 * 60 * 1000;
+const GROUP_CLAIM_CODE_TTL_MS = 5 * 60 * 1000;
 const LOCK_STALE_MS = 30_000;
 const LOCK_RETRY_ATTEMPTS = 12;
 const LOCK_RETRY_BASE_MS = 50;
+const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
 type AllowFromStore = {
   version: 1;
@@ -25,6 +27,20 @@ type GewePairCodeEntry = {
 type GewePairCodeStore = {
   version: 1;
   codes: Array<string | GewePairCodeEntry>;
+};
+
+type GeweGroupClaimCodeEntry = {
+  code: string;
+  accountId?: string;
+  issuerId?: string;
+  createdAt?: string;
+  usedAt?: string;
+  usedGroupId?: string;
+};
+
+type GeweGroupClaimCodeStore = {
+  version: 1;
+  codes: GeweGroupClaimCodeEntry[];
 };
 
 type LegacyPairingRequest = {
@@ -51,6 +67,15 @@ type CanonicalLegacyPairingRequest = {
   accountId: string;
   createdAt?: string;
   persisted: LegacyPairingRequest;
+};
+
+type CanonicalGroupClaimCodeEntry = {
+  code: string;
+  accountId: string;
+  issuerId: string;
+  createdAt?: string;
+  usedAt?: string;
+  usedGroupId?: string;
 };
 
 function resolveCredentialsDir(env: NodeJS.ProcessEnv = process.env): string {
@@ -89,6 +114,11 @@ function normalizePairCode(code: string | undefined | null): string {
   return (code ?? "").trim().toUpperCase();
 }
 
+function normalizeGroupClaimIssuerId(value: string | undefined | null): string {
+  const normalized = stripChannelPrefix(String(value ?? "").trim());
+  return normalized || "";
+}
+
 function normalizeAllowFromEntry(entry: string | number): string {
   const normalized = stripChannelPrefix(String(entry).trim());
   if (!normalized || normalized === "*") {
@@ -120,6 +150,22 @@ function isExpired(createdAt: string | undefined, nowMs: number, allowMissing = 
     return true;
   }
   return nowMs - parsed > PAIR_CODE_TTL_MS;
+}
+
+function isExpiredWithTtl(params: {
+  createdAt: string | undefined;
+  nowMs: number;
+  ttlMs: number;
+  allowMissing?: boolean;
+}): boolean {
+  if (!params.createdAt) {
+    return params.allowMissing !== true;
+  }
+  const parsed = Date.parse(params.createdAt);
+  if (!Number.isFinite(parsed)) {
+    return true;
+  }
+  return params.nowMs - parsed > params.ttlMs;
 }
 
 async function readJsonFileWithFallback<T>(
@@ -275,6 +321,50 @@ function persistPairCodeEntry(entry: CanonicalPairCodeEntry): GewePairCodeEntry 
     ...(entry.accountId !== DEFAULT_ACCOUNT_ID ? { accountId: entry.accountId } : {}),
     ...(entry.createdAt ? { createdAt: entry.createdAt } : {}),
   };
+}
+
+function canonicalizeGroupClaimCodeEntry(
+  raw: GeweGroupClaimCodeEntry,
+): CanonicalGroupClaimCodeEntry | null {
+  if (!raw || typeof raw !== "object") {
+    return null;
+  }
+  const code = normalizePairCode(raw.code);
+  const issuerId = normalizeGroupClaimIssuerId(raw.issuerId);
+  if (!code || !issuerId) {
+    return null;
+  }
+  return {
+    code,
+    accountId: normalizeStoreAccountId(raw.accountId),
+    issuerId,
+    createdAt: typeof raw.createdAt === "string" ? raw.createdAt : undefined,
+    usedAt: typeof raw.usedAt === "string" ? raw.usedAt : undefined,
+    usedGroupId:
+      typeof raw.usedGroupId === "string" ? stripChannelPrefix(raw.usedGroupId.trim()) : undefined,
+  };
+}
+
+function persistGroupClaimCodeEntry(
+  entry: CanonicalGroupClaimCodeEntry,
+): GeweGroupClaimCodeEntry {
+  return {
+    code: entry.code,
+    ...(entry.accountId !== DEFAULT_ACCOUNT_ID ? { accountId: entry.accountId } : {}),
+    issuerId: entry.issuerId,
+    ...(entry.createdAt ? { createdAt: entry.createdAt } : {}),
+    ...(entry.usedAt ? { usedAt: entry.usedAt } : {}),
+    ...(entry.usedGroupId ? { usedGroupId: entry.usedGroupId } : {}),
+  };
+}
+
+function randomCode(length: number): string {
+  const bytes = crypto.randomBytes(length);
+  let output = "";
+  for (let index = 0; index < length; index += 1) {
+    output += CODE_ALPHABET[bytes[index] % CODE_ALPHABET.length];
+  }
+  return output;
 }
 
 function canonicalizeLegacyPairingRequest(
@@ -452,6 +542,16 @@ export function resolveGeweLegacyPairingPath(
   return path.join(resolveCredentialsDir(env), `${safeChannelKey(CHANNEL_ID)}-pairing.json`);
 }
 
+export function resolveGeweGroupClaimCodesPath(
+  accountId?: string,
+  env: NodeJS.ProcessEnv = process.env,
+): string {
+  return path.join(
+    resolveCredentialsDir(env),
+    `${safeChannelKey(CHANNEL_ID)}-${safeAccountKey(normalizeStoreAccountId(accountId))}-group-claim-codes.json`,
+  );
+}
+
 export async function readGeweAllowFromStore(params: {
   accountId?: string;
   env?: NodeJS.ProcessEnv;
@@ -475,4 +575,185 @@ export async function redeemGewePairCode(params: {
     (await redeemFromPairCodesStore(params)) ??
     (await redeemFromLegacyPairingStore(params))
   );
+}
+
+export async function issueGeweGroupClaimCode(params: {
+  accountId?: string;
+  issuerId: string;
+  env?: NodeJS.ProcessEnv;
+}): Promise<{
+  code: string;
+  accountId: string;
+  issuerId: string;
+  createdAt: string;
+  expiresAt: string;
+}> {
+  const resolvedAccountId = normalizeStoreAccountId(params.accountId);
+  const issuerId = normalizeGroupClaimIssuerId(params.issuerId);
+  if (!issuerId) {
+    throw new Error("invalid GeWe group claim issuer");
+  }
+  const filePath = resolveGeweGroupClaimCodesPath(resolvedAccountId, params.env);
+  const createdAt = new Date().toISOString();
+  const expiresAt = new Date(Date.parse(createdAt) + GROUP_CLAIM_CODE_TTL_MS).toISOString();
+
+  const code = await withFileLock(filePath, async () => {
+    const { value } = await readJsonFileWithFallback<GeweGroupClaimCodeStore>(filePath, {
+      version: 1,
+      codes: [],
+    });
+    const nowMs = Date.now();
+    const codes = Array.isArray(value.codes) ? value.codes : [];
+    const nextCodes: GeweGroupClaimCodeEntry[] = [];
+    const activeCodes = new Set<string>();
+    for (const raw of codes) {
+      const entry = canonicalizeGroupClaimCodeEntry(raw);
+      if (!entry) {
+        continue;
+      }
+      if (
+        entry.usedAt ||
+        isExpiredWithTtl({
+          createdAt: entry.createdAt,
+          nowMs,
+          ttlMs: GROUP_CLAIM_CODE_TTL_MS,
+        })
+      ) {
+        continue;
+      }
+      activeCodes.add(entry.code);
+      nextCodes.push(persistGroupClaimCodeEntry(entry));
+    }
+
+    let nextCode = "";
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      const candidate = randomCode(8);
+      if (!activeCodes.has(candidate)) {
+        nextCode = candidate;
+        break;
+      }
+    }
+    if (!nextCode) {
+      throw new Error("failed generating GeWe group claim code");
+    }
+
+    nextCodes.push({
+      code: nextCode,
+      ...(resolvedAccountId !== DEFAULT_ACCOUNT_ID ? { accountId: resolvedAccountId } : {}),
+      issuerId,
+      createdAt,
+    });
+    await writeJsonFileAtomically(filePath, {
+      version: 1,
+      codes: nextCodes,
+    } satisfies GeweGroupClaimCodeStore);
+    return nextCode;
+  });
+
+  return {
+    code,
+    accountId: resolvedAccountId,
+    issuerId,
+    createdAt,
+    expiresAt,
+  };
+}
+
+export async function redeemGeweGroupClaimCode(params: {
+  accountId?: string;
+  code: string;
+  issuerId: string;
+  groupId: string;
+  env?: NodeJS.ProcessEnv;
+}): Promise<{
+  code: string;
+  accountId: string;
+  issuerId: string;
+  groupId: string;
+  createdAt?: string;
+  usedAt: string;
+} | null> {
+  const resolvedAccountId = normalizeStoreAccountId(params.accountId);
+  const targetCode = normalizePairCode(params.code);
+  const issuerId = normalizeGroupClaimIssuerId(params.issuerId);
+  const groupId = stripChannelPrefix(params.groupId.trim());
+  if (!targetCode || !issuerId || !groupId) {
+    return null;
+  }
+  const filePath = resolveGeweGroupClaimCodesPath(resolvedAccountId, params.env);
+
+  const matched = await withFileLock(filePath, async () => {
+    const { value, exists } = await readJsonFileWithFallback<GeweGroupClaimCodeStore>(filePath, {
+      version: 1,
+      codes: [],
+    });
+    const nowMs = Date.now();
+    const usedAt = new Date().toISOString();
+    const codes = Array.isArray(value.codes) ? value.codes : [];
+    let result:
+      | {
+          code: string;
+          accountId: string;
+          issuerId: string;
+          groupId: string;
+          createdAt?: string;
+          usedAt: string;
+        }
+      | null = null;
+    let changed = false;
+    const nextCodes: GeweGroupClaimCodeEntry[] = [];
+    for (const raw of codes) {
+      const entry = canonicalizeGroupClaimCodeEntry(raw);
+      if (!entry) {
+        changed = true;
+        continue;
+      }
+      if (
+        entry.usedAt ||
+        isExpiredWithTtl({
+          createdAt: entry.createdAt,
+          nowMs,
+          ttlMs: GROUP_CLAIM_CODE_TTL_MS,
+        })
+      ) {
+        changed = true;
+        continue;
+      }
+      if (
+        !result &&
+        entry.code === targetCode &&
+        entry.accountId === resolvedAccountId &&
+        entry.issuerId === issuerId
+      ) {
+        changed = true;
+        result = {
+          code: entry.code,
+          accountId: entry.accountId,
+          issuerId: entry.issuerId,
+          groupId,
+          createdAt: entry.createdAt,
+          usedAt,
+        };
+        nextCodes.push(
+          persistGroupClaimCodeEntry({
+            ...entry,
+            usedAt,
+            usedGroupId: groupId,
+          }),
+        );
+        continue;
+      }
+      nextCodes.push(persistGroupClaimCodeEntry(entry));
+    }
+
+    if (changed || exists) {
+      await writeJsonFileAtomically(filePath, {
+        version: 1,
+        codes: nextCodes,
+      } satisfies GeweGroupClaimCodeStore);
+    }
+    return result;
+  });
+
+  return matched;
 }

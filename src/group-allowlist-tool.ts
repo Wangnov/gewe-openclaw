@@ -4,8 +4,8 @@ import { z } from "zod";
 import { resolveGeweAccount } from "./accounts.js";
 import { ensureGeweWriteSection } from "./config-edit.js";
 import { normalizeGeweBindingConversationId, inferCurrentGeweGroupId } from "./group-binding.js";
-import { normalizeAccountId, type OpenClawConfig } from "./openclaw-compat.js";
-import { readGeweAllowFromStore } from "./pairing-store.js";
+import { buildJsonSchema, normalizeAccountId, type OpenClawConfig } from "./openclaw-compat.js";
+import { shouldExposeGeweAgentTool } from "./tool-visibility.js";
 import type { GeweGroupConfig } from "./types.js";
 
 const GeweManageGroupAllowlistSchema = z
@@ -16,6 +16,9 @@ const GeweManageGroupAllowlistSchema = z
     entries: z.array(z.string()).optional(),
   })
   .strict();
+
+const GeweManageGroupAllowlistParameters =
+  buildJsonSchema(GeweManageGroupAllowlistSchema) ?? { type: "object" };
 
 function jsonResult(details: Record<string, unknown>) {
   return {
@@ -80,9 +83,7 @@ function readOverrideEntries(accountConfig: Record<string, unknown>, groupId: st
 
 function resolveEffectiveEntries(params: {
   accountConfig: Record<string, unknown>;
-  accountId: string;
   groupId: string;
-  pairingEntries: string[];
 }): {
   baseEntries: string[];
   overrideEntries: string[];
@@ -93,7 +94,7 @@ function resolveEffectiveEntries(params: {
   return {
     baseEntries,
     overrideEntries,
-    effectiveEntries: dedupeEntries([...baseEntries, ...params.pairingEntries, ...overrideEntries]),
+    effectiveEntries: dedupeEntries([...baseEntries, ...overrideEntries]),
   };
 }
 
@@ -160,14 +161,16 @@ export function createGeweManageGroupAllowlistTool(
     readConfig?: () => OpenClawConfig;
     writeConfigFile?: (next: OpenClawConfig) => Promise<void>;
   },
-): AnyAgentTool {
+): AnyAgentTool | null {
+  if (!shouldExposeGeweAgentTool(ctx)) {
+    return null;
+  }
   return {
     name: "gewe_manage_group_allowlist",
     label: "GeWe Manage Group Allowlist",
     description:
       "Inspect or edit a GeWe group's allowFrom override. Modes: inspect, add, remove, replace, clear.",
-    ownerOnly: true,
-    parameters: GeweManageGroupAllowlistSchema,
+    parameters: GeweManageGroupAllowlistParameters,
     execute: async (_toolCallId, rawParams) => {
       const params = GeweManageGroupAllowlistSchema.parse(rawParams ?? {});
       const cfg = resolveToolConfig(ctx, deps?.readConfig);
@@ -189,12 +192,9 @@ export function createGeweManageGroupAllowlistTool(
               ?.accounts?.[accountId] ?? {})
       ) as Record<string, unknown>;
 
-      const pairingEntries = await readGeweAllowFromStore({ accountId });
       const current = resolveEffectiveEntries({
         accountConfig: resolvedAccount.config as Record<string, unknown>,
-        accountId,
         groupId,
-        pairingEntries,
       });
 
       if (params.mode === "inspect") {
@@ -205,7 +205,6 @@ export function createGeweManageGroupAllowlistTool(
           groupId,
           groupPolicy: resolvedAccount.config.groupPolicy ?? "allowlist",
           baseEntries: current.baseEntries,
-          pairingEntries,
           overrideEntries: current.overrideEntries,
           effectiveEntries: current.effectiveEntries,
         });

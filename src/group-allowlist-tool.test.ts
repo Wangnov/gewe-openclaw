@@ -111,7 +111,7 @@ async function writeJson(filePath: string, value: unknown): Promise<void> {
   await fs.writeFile(filePath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
 }
 
-test("GeWe 插件会注册 owner-only 的群 allowlist 管理工具", () => {
+test("GeWe 插件会注册对已配对私聊发送者可见的群 allowlist 管理工具", () => {
   const { api, registeredTools } = createApi({});
   plugin.register?.(api as never);
 
@@ -120,15 +120,18 @@ test("GeWe 插件会注册 owner-only 的群 allowlist 管理工具", () => {
     name: "gewe_manage_group_allowlist",
     ctx: {
       config: {},
-      senderIsOwner: true,
+      senderIsOwner: false,
+      messageChannel: "gewe-openclaw",
+      sessionKey: "agent:ops:gewe-openclaw:direct:wxid_owner",
+      requesterSenderId: "wxid_owner",
     },
   });
 
   assert.equal(tool.name, "gewe_manage_group_allowlist");
-  assert.equal(tool.ownerOnly, true);
+  assert.notEqual(tool.ownerOnly, true);
 });
 
-test("GeWe 群 allowlist 工具会从当前群推断 inspect 目标并返回 effectiveEntries", async () => {
+test("GeWe 群 allowlist 工具 inspect 只返回群级 allowlist，不混入私聊 pairing store", async () => {
   await withTempStateDir(async (stateDir) => {
     await writeJson(resolveGeweAllowFromPath("default", process.env), {
       version: 1,
@@ -168,7 +171,8 @@ test("GeWe 群 allowlist 工具会从当前群推断 inspect 目标并返回 eff
     assert.equal(result.details.ok, true);
     assert.equal(result.details.groupId, "room@chatroom");
     assert.deepEqual(result.details.overrideEntries, ["wxid_room"]);
-    assert.deepEqual(result.details.effectiveEntries, ["wxid_global", "wxid_pairing", "wxid_room"]);
+    assert.equal("pairingEntries" in result.details, false);
+    assert.deepEqual(result.details.effectiveEntries, ["wxid_global", "wxid_room"]);
     assert.equal(stateDir.length > 0, true);
   });
 });

@@ -15,7 +15,8 @@ import {
   resolveGeweBindingIdentityConfigForGroup,
   resolveGeweCurrentSelfNickname,
 } from "./group-binding.js";
-import { normalizeAccountId, type OpenClawConfig } from "./openclaw-compat.js";
+import { buildJsonSchema, normalizeAccountId, type OpenClawConfig } from "./openclaw-compat.js";
+import { shouldExposeGeweAgentTool } from "./tool-visibility.js";
 
 const GeweSyncGroupBindingToolSchema = z
   .object({
@@ -27,6 +28,9 @@ const GeweSyncGroupBindingToolSchema = z
   })
   .strict();
 
+const GeweSyncGroupBindingToolParameters =
+  buildJsonSchema(GeweSyncGroupBindingToolSchema) ?? { type: "object" };
+
 function jsonResult(details: Record<string, unknown>) {
   return {
     content: [{ type: "text" as const, text: JSON.stringify(details, null, 2) }],
@@ -34,14 +38,16 @@ function jsonResult(details: Record<string, unknown>) {
   };
 }
 
-export function createGeweSyncGroupBindingTool(ctx: OpenClawPluginToolContext): AnyAgentTool {
+export function createGeweSyncGroupBindingTool(ctx: OpenClawPluginToolContext): AnyAgentTool | null {
+  if (!shouldExposeGeweAgentTool(ctx)) {
+    return null;
+  }
   return {
     name: "gewe_sync_group_binding",
     label: "GeWe Sync Group Binding",
     description:
       "Inspect or manually sync a GeWe group binding identity. Modes: inspect, dry_run, apply.",
-    ownerOnly: true,
-    parameters: GeweSyncGroupBindingToolSchema,
+    parameters: GeweSyncGroupBindingToolParameters,
     execute: async (_toolCallId, rawParams) => {
       const params = GeweSyncGroupBindingToolSchema.parse(rawParams ?? {});
       const cfg = (ctx.config ?? {}) as OpenClawConfig;

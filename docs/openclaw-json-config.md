@@ -539,6 +539,7 @@ GeWe 的配置不是只有一层。为了便于管理，它分成 5 个作用域
 
 - `pairing`
   不在允许列表里的私聊用户默认不能触发，但可以通过配对码加入允许列表。
+  它只影响私聊，不会自动授权任何群聊。
 
 - `allowlist`
   只有 `allowFrom` 里的私聊对象可以触发。
@@ -602,6 +603,11 @@ GeWe 的配置不是只有一层。为了便于管理，它分成 5 个作用域
 
 - 群本身还要通过 `groups`
 - 但就算进了允许群，也只有这两个成员说话时才会触发
+
+注意：
+
+- 群聊权限只看 `groupAllowFrom` 和 `groups.<groupId>.allowFrom`
+- 私聊 `pairing` 写入的 allow-from 不再参与群聊权限判断
 
 ## 11. `groups`：按群聊做局部配置
 
@@ -1624,18 +1630,41 @@ GeWe 现在支持这些目录入口：
 }
 ```
 
-`inspect` 返回里你会看到 3 层来源：
+`inspect` 返回里你会看到 2 层来源：
 
 - `baseEntries`
   顶层 `groupAllowFrom`
-- `pairingEntries`
-  pairing 码本地写入的 allow-from
 - `overrideEntries`
   `groups.<groupId>.allowFrom`
 
 最终结果会合并成 `effectiveEntries`。
 
-### 17.4 状态页现在会显示什么
+### 17.4 新群如何安全接入
+
+推荐流程：
+
+1. 在已配对的私聊里调用 `gewe_issue_group_claim_code`
+2. 把机器人拉进目标群
+3. 在目标群里只发送这 8 位认领码：`XXXXXXXX`
+
+推荐默认话术：
+
+- 私聊里直接把 8 位码发给用户，不要包装成 `认领码: XXXXXXXX`
+- 群里也只发这 8 位码，不要加 `认领码:` 前缀
+
+认领成功后：
+
+- 插件会把当前发码者写入 `groups.<groupId>.allowFrom`
+- 只授权当前群，不会改顶层 `groupAllowFrom`
+- 不会自动创建 `bindings[]`
+
+安全边界：
+
+- 认领码短时有效、单次使用
+- 只能由签发它的那个发码者在群里使用
+- 如果 `groups.<groupId>.enabled = false`，认领不会覆盖显式禁用
+
+### 17.5 状态页现在会显示什么
 
 GeWe 状态摘要现在除了基础的 `configured/running`，还会展示：
 

@@ -133,7 +133,7 @@ async function withMockFetch<T>(
   }
 }
 
-test("GeWe 插件会注册 owner-only 的群绑定同步工具", () => {
+test("GeWe 插件会注册对已配对私聊发送者可见的群绑定同步工具", () => {
   const { api, registeredTools } = createApi({});
   plugin.register?.(api as never);
 
@@ -142,12 +142,15 @@ test("GeWe 插件会注册 owner-only 的群绑定同步工具", () => {
     name: "gewe_sync_group_binding",
     ctx: {
       config: {},
-      senderIsOwner: true,
+      senderIsOwner: false,
+      messageChannel: "gewe-openclaw",
+      sessionKey: "agent:ops:gewe-openclaw:direct:wxid_owner",
+      requesterSenderId: "wxid_owner",
     },
   });
 
   assert.equal(tool.name, "gewe_sync_group_binding");
-  assert.equal(tool.ownerOnly, true);
+  assert.notEqual(tool.ownerOnly, true);
 });
 
 test("GeWe 群绑定同步工具会从当前群 session 推断 inspect 目标", async () => {
