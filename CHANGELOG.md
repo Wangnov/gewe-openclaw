@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2026.3.25] - 2026-03-19
+
+### Changed
+
+- GeWe 群聊 `reply.mode` 的正式配置项现只保留 `plain`、`quote_source`、`at_sender`，README 与 `openclaw.json` 配置手册已同步移除 `quote_and_at` 示例。
+- 历史配置里的 `reply.mode = "quote_and_at"` 现在会自动降级为“引用原消息 + 可见 `@昵称` 前缀”，不再把它当成原生 `@` 能力暴露。
+
+### Fixed
+
+- 修复旧 `quote_and_at` 兼容路径仍会继续注入原生 `ats` 的问题，避免在 GeWe 公共 API 无法稳定支持时产生误导性行为。
+
 ## [2026.3.24] - 2026-03-19
 
 ### Changed

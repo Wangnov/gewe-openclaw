@@ -16,7 +16,7 @@ test("GeWe 配置支持 group/dm trigger 与 reply 规则", () => {
     groups: {
       "*": {
         trigger: { mode: "at_or_quote" },
-        reply: { mode: "quote_and_at" },
+        reply: { mode: "at_sender" },
         bindingIdentity: {
           selfNickname: { source: "agent_name" },
           remark: { source: "agent_id" },
@@ -105,6 +105,6 @@ test("GeWe group reply 默认值会在未显式配置时回退到 autoQuoteReply
       },
       autoQuoteReply: false,
     }),
-    "quote_and_at",
+    "quote_and_at_compat",
   );
 });

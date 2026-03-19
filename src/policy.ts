@@ -15,8 +15,9 @@ import type {
   GeweDmReplyMode,
   GeweDmTriggerMode,
   GeweGroupConfig,
-  GeweGroupReplyMode,
+  GeweGroupReplyModeInput,
   GeweGroupTriggerMode,
+  ResolvedGeweGroupReplyMode,
 } from "./types.js";
 
 function normalizeAllowEntry(raw: string): string {
@@ -189,16 +190,24 @@ export function resolveGeweDmTriggerMode(params: {
   return params.dmConfig?.trigger?.mode ?? params.wildcardConfig?.trigger?.mode ?? "any_message";
 }
 
+function resolveConfiguredGroupReplyMode(
+  configuredMode: GeweGroupReplyModeInput | undefined,
+): ResolvedGeweGroupReplyMode | undefined {
+  if (configuredMode === "quote_and_at") {
+    return "quote_and_at_compat";
+  }
+  return configuredMode;
+}
+
 export function resolveGeweGroupReplyMode(params: {
   groupConfig?: GeweGroupConfig;
   wildcardConfig?: GeweGroupConfig;
   autoQuoteReply?: boolean;
-}): GeweGroupReplyMode {
-  return (
-    params.groupConfig?.reply?.mode ??
-    params.wildcardConfig?.reply?.mode ??
-    (params.autoQuoteReply === false ? "plain" : "quote_source")
+}): ResolvedGeweGroupReplyMode {
+  const configuredMode = resolveConfiguredGroupReplyMode(
+    params.groupConfig?.reply?.mode ?? params.wildcardConfig?.reply?.mode,
   );
+  return configuredMode ?? (params.autoQuoteReply === false ? "plain" : "quote_source");
 }
 
 export function resolveGeweDmReplyMode(params: {

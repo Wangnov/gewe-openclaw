@@ -7,7 +7,10 @@ import {
   ToolPolicySchema,
   requireOpenAllowFrom,
 } from "./openclaw-compat.js";
+import type { GeweGroupReplyModeInput } from "./types.js";
 import { z } from "zod";
+
+const GEWE_GROUP_REPLY_MODES = ["plain", "quote_source", "at_sender", "quote_and_at"] as const;
 
 const GeweGroupTriggerSchema = z
   .object({
@@ -23,7 +26,15 @@ const GeweDmTriggerSchema = z
 
 const GeweGroupReplySchema = z
   .object({
-    mode: z.enum(["plain", "quote_source", "at_sender", "quote_and_at"]).optional(),
+    mode: z
+      .custom<GeweGroupReplyModeInput>(
+        (value) => typeof value === "string" && GEWE_GROUP_REPLY_MODES.includes(value as GeweGroupReplyModeInput),
+        {
+          message:
+            "invalid GeWe group reply mode; supported values are plain, quote_source, at_sender (quote_and_at is accepted only for compatibility)",
+        },
+      )
+      .optional(),
   })
   .strict();
 

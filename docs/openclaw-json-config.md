@@ -614,7 +614,7 @@ GeWe 的配置不是只有一层。为了便于管理，它分成 5 个作用域
       "trigger": { "mode": "at" }
     },
     "team-room@chatroom": {
-      "reply": { "mode": "quote_and_at" }
+      "reply": { "mode": "at_sender" }
     }
   }
 }
@@ -699,7 +699,7 @@ GeWe 的配置不是只有一层。为了便于管理，它分成 5 个作用域
 
 ### 11.8 `groups.<key>.reply.mode`
 
-- 类型：`"plain" | "quote_source" | "at_sender" | "quote_and_at"`
+- 类型：`"plain" | "quote_source" | "at_sender"`
 - 默认值：
   - `autoQuoteReply !== false` 时默认 `quote_source`
   - `autoQuoteReply === false` 时默认 `plain`
@@ -715,8 +715,11 @@ GeWe 的配置不是只有一层。为了便于管理，它分成 5 个作用域
 - `at_sender`
   首条文本回复自动 `@` 发送者
 
-- `quote_and_at`
-  首条文本回复同时引用并 `@` 发送者；如果回复不是文本，会自动退化为 `quote_source`
+兼容说明：
+
+- `quote_and_at` 已下线，不再作为正式配置项推荐使用
+- 历史配置仍可读取，但会自动降级为 `quote_source + 可见 @昵称前缀`
+- 这里的 `@昵称前缀` 不是微信原生 `@`
 
 ### 11.9 `requireMention` 兼容字段
 
@@ -910,7 +913,7 @@ GeWe 的配置不是只有一层。为了便于管理，它分成 5 个作用域
 说明：
 
 - 私聊不支持 `at_sender`
-- 私聊也不支持 `quote_and_at`
+- 私聊也不支持历史兼容值 `quote_and_at`
 
 ## 13. 历史、流式与输出相关字段
 
@@ -1015,7 +1018,7 @@ GeWe 的配置不是只有一层。为了便于管理，它分成 5 个作用域
           "groups": {
             "project@chatroom": {
               "trigger": { "mode": "at_or_quote" },
-              "reply": { "mode": "quote_and_at" }
+              "reply": { "mode": "at_sender" }
             }
           }
         },
@@ -1095,7 +1098,7 @@ GeWe 的配置不是只有一层。为了便于管理，它分成 5 个作用域
 }
 ```
 
-### 场景 E：默认群里引用回复，某个群改成“引用并 `@`”
+### 场景 E：默认群里引用回复，某个群改成“显式 `@` 发送者”
 
 ```json5
 {
@@ -1104,7 +1107,7 @@ GeWe 的配置不是只有一层。为了便于管理，它分成 5 个作用域
       "reply": { "mode": "quote_source" }
     },
     "project@chatroom": {
-      "reply": { "mode": "quote_and_at" }
+      "reply": { "mode": "at_sender" }
     }
   }
 }
@@ -1146,7 +1149,7 @@ GeWe 的配置不是只有一层。为了便于管理，它分成 5 个作用域
       "groups": {
         "ops-room@chatroom": {
           "trigger": { "mode": "at_or_quote" },
-          "reply": { "mode": "quote_and_at" }
+          "reply": { "mode": "quote_source" }
         }
       }
     }
@@ -1437,7 +1440,7 @@ GeWe 群没有 Telegram topic、Feishu thread 这种子会话结构。
         },
         "project-room@chatroom": {
           "trigger": { "mode": "at_or_quote" },
-          "reply": { "mode": "quote_and_at" },
+          "reply": { "mode": "at_sender" },
           "skills": ["project-skill"],
           "systemPrompt": "You are the project room assistant.",
           "bindingIdentity": {

@@ -9,7 +9,10 @@ import type {
 
 export type GeweGroupTriggerMode = "at" | "quote" | "at_or_quote" | "any_message";
 export type GeweDmTriggerMode = "any_message" | "quote";
-export type GeweGroupReplyMode = "plain" | "quote_source" | "at_sender" | "quote_and_at";
+export type GeweGroupReplyMode = "plain" | "quote_source" | "at_sender";
+export type GeweDeprecatedGroupReplyMode = "quote_and_at";
+export type GeweGroupReplyModeInput = GeweGroupReplyMode | GeweDeprecatedGroupReplyMode;
+export type ResolvedGeweGroupReplyMode = GeweGroupReplyMode | "quote_and_at_compat";
 export type GeweDmReplyMode = "plain" | "quote_source";
 
 export type GeweGroupTriggerConfig = {
@@ -21,7 +24,7 @@ export type GeweDmTriggerConfig = {
 };
 
 export type GeweGroupReplyConfig = {
-  mode?: GeweGroupReplyMode;
+  mode?: GeweGroupReplyModeInput;
 };
 
 export type GeweDmReplyConfig = {

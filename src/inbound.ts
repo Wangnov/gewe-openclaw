@@ -37,9 +37,9 @@ import {
 import type {
   CoreConfig,
   GeweDmReplyMode,
-  GeweGroupReplyMode,
   GeweInboundMessage,
   ResolvedGeweAccount,
+  ResolvedGeweGroupReplyMode,
 } from "./types.js";
 import {
   extractAppMsgType,
@@ -68,7 +68,7 @@ type PreparedInbound = {
   groupName?: string;
   groupSystemPrompt?: string;
   groupSkillFilter?: string[];
-  replyMode: GeweGroupReplyMode | GeweDmReplyMode;
+  replyMode: ResolvedGeweGroupReplyMode | GeweDmReplyMode;
   route: ReturnType<ReturnType<typeof getGeweRuntime>["channel"]["routing"]["resolveAgentRoute"]>;
   storePath: string;
   toWxid: string;

@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { applyGeweReplyModeToPayload, resolveGeweReplyOptions } from "./reply-options.ts";
+import { resolveGeweGroupReplyMode } from "./policy.ts";
 
 test("GeWe 默认开启 block streaming", () => {
   assert.deepEqual(resolveGeweReplyOptions({ config: {} }), {
@@ -135,14 +136,20 @@ test("GeWe plain reply 模式会移除默认注入的 replyToId", () => {
   );
 });
 
-test("GeWe quote_and_at 在非文本 payload 上会退化为 quote_source", () => {
+test("GeWe 兼容旧 quote_and_at 在非文本 payload 上会退化为 quote_source", () => {
+  const mode = resolveGeweGroupReplyMode({
+    groupConfig: {
+      reply: { mode: "quote_and_at" },
+    },
+  });
+  assert.equal(mode, "quote_and_at_compat");
   assert.deepEqual(
     applyGeweReplyModeToPayload(
       {
         mediaUrl: "https://example.com/test.png",
       },
       {
-        mode: "quote_and_at",
+        mode,
         isGroup: true,
         senderId: "wxid_sender",
         defaultReplyToId: "msg-123",
@@ -156,14 +163,20 @@ test("GeWe quote_and_at 在非文本 payload 上会退化为 quote_source", () =
   );
 });
 
-test("GeWe quote_and_at 会同时补引用和 @昵称 前缀", () => {
+test("GeWe 兼容旧 quote_and_at 会降级为引用加可见 @昵称 前缀", () => {
+  const mode = resolveGeweGroupReplyMode({
+    groupConfig: {
+      reply: { mode: "quote_and_at" },
+    },
+  });
+  assert.equal(mode, "quote_and_at_compat");
   assert.deepEqual(
     applyGeweReplyModeToPayload(
       {
         text: "hello",
       },
       {
-        mode: "quote_and_at",
+        mode,
         isGroup: true,
         senderId: "wxid_sender",
         senderName: "CLAsh",
@@ -174,11 +187,6 @@ test("GeWe quote_and_at 会同时补引用和 @昵称 前缀", () => {
     {
       text: "@CLAsh\u2005hello",
       replyToId: "msg-123",
-      channelData: {
-        "gewe-openclaw": {
-          ats: "wxid_sender",
-        },
-      },
     },
   );
 });

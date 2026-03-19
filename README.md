@@ -141,7 +141,12 @@ openclaw onboard
 - `plain`：普通回复
 - `quote_source`：首条回复自动引用当前入站消息
 - `at_sender`：首条文本回复自动 `@` 发送者
-- `quote_and_at`：首条文本回复同时引用并 `@`；非文本回复会自动退化为 `quote_source`
+
+兼容说明：
+
+- `quote_and_at` 已下线，不再建议继续配置
+- 历史配置里的 `quote_and_at` 仍会被兼容读取，但会自动降级为 `quote_source + 可见 @昵称前缀`
+- 这个兼容降级不是微信原生 `@`，只是为了避免旧配置直接失效
 
 群聊默认值会跟随 `autoQuoteReply`：
 
@@ -167,6 +172,7 @@ openclaw onboard
 - `requireMention: true/false` 仍然可用，会分别映射到群聊 `trigger.mode = "at"` / `"any_message"`
 - 新的 `trigger` / `reply` 配置优先级更高
 - `autoQuoteReply` 现在主要用于“未显式配置 `reply.mode` 时”的默认值回退
+- 历史 `reply.mode = "quote_and_at"` 会自动降级为 `quote_source + 可见 @昵称前缀`
 
 示例：
 
@@ -182,7 +188,7 @@ openclaw onboard
         },
         "project-room@chatroom": {
           "trigger": { "mode": "at_or_quote" },
-          "reply": { "mode": "quote_and_at" },
+          "reply": { "mode": "at_sender" },
           "skills": ["project-skill"]
         },
         "ops-room@chatroom": {
@@ -303,7 +309,7 @@ GeWe 的状态页现在会额外显示：
           "groups": {
             "ops-room@chatroom": {
               "trigger": { "mode": "at_or_quote" },
-              "reply": { "mode": "quote_and_at" }
+              "reply": { "mode": "quote_source" }
             }
           }
         }

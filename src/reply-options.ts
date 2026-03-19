@@ -1,13 +1,13 @@
 import type { ReplyPayload } from "./openclaw-compat.js";
 import type {
   GeweDmReplyMode,
-  GeweGroupReplyMode,
   ResolvedGeweAccount,
+  ResolvedGeweGroupReplyMode,
 } from "./types.js";
 
 const CHANNEL_DATA_KEY = "gewe-openclaw";
 
-type GeweReplyMode = GeweGroupReplyMode | GeweDmReplyMode;
+type GeweReplyMode = ResolvedGeweGroupReplyMode | GeweDmReplyMode;
 type RepliedRef = { value: boolean };
 
 function canAttachAt(payload: ReplyPayload): boolean {
@@ -122,9 +122,9 @@ export function applyGeweReplyModeToPayload(
 ): ReplyPayload {
   let nextPayload = payload;
   const effectiveMode =
-    params.mode === "quote_and_at" && !canAttachAt(payload) ? "quote_source" : params.mode;
+    params.mode === "quote_and_at_compat" && !canAttachAt(payload) ? "quote_source" : params.mode;
 
-  if (effectiveMode === "quote_source" || effectiveMode === "quote_and_at") {
+  if (effectiveMode === "quote_source" || effectiveMode === "quote_and_at_compat") {
     nextPayload = withReplyToId(nextPayload, params.defaultReplyToId, params.repliedRef);
   } else if (nextPayload.replyToId?.trim() && params.repliedRef) {
     params.repliedRef.value = true;
@@ -136,10 +136,12 @@ export function applyGeweReplyModeToPayload(
 
   if (
     params.isGroup &&
-    (effectiveMode === "at_sender" || effectiveMode === "quote_and_at")
+    (effectiveMode === "at_sender" || effectiveMode === "quote_and_at_compat")
   ) {
     nextPayload = withAtSenderPrefix(nextPayload, params.senderName);
-    nextPayload = withAtSender(nextPayload, params.senderId);
+    if (effectiveMode === "at_sender") {
+      nextPayload = withAtSender(nextPayload, params.senderId);
+    }
   }
 
   return nextPayload;
