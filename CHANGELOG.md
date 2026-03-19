@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2026.3.23] - 2026-03-19
+
+### Added
+
+- 仓库新增 tag 驱动的 npm 发布工作流，推送 `v*` tag 后会自动执行发版流程。
+
+### Changed
+
+- npm 发版前现在会自动校验版本号、CHANGELOG、测试与打包结果，降低误发版风险。
+- README 补充了维护者发布说明，包括 Trusted Publisher 配置要点和日常发版步骤。
+
 ## [2026.3.22] - 2026-03-19
 
 ### Added
