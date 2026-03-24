@@ -1,4 +1,4 @@
-import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
+import type { OpenClawPluginApi } from "./src/openclaw-compat.js";
 
 import { createGeweApiTools } from "./src/api-tools.js";
 import { gewePlugin } from "./src/channel.js";
@@ -6,6 +6,11 @@ import { createGeweManageGroupAllowlistTool } from "./src/group-allowlist-tool.j
 import { createGeweSyncGroupBindingTool } from "./src/group-binding-tool.js";
 import { createGeweIssueGroupClaimCodeTool } from "./src/group-claim-tool.js";
 import { setGeweRuntime } from "./src/runtime.js";
+
+type CompatRegistrationMode = "full" | "setup-only" | "setup-runtime";
+type CompatOpenClawPluginApi = OpenClawPluginApi & {
+  registrationMode?: CompatRegistrationMode;
+};
 
 function emptyPluginConfigSchema() {
   return {
@@ -41,8 +46,15 @@ const plugin = {
   description: "OpenClaw GeWe channel plugin",
   configSchema: emptyPluginConfigSchema(),
   register(api: OpenClawPluginApi) {
+    const compatApi = api as CompatOpenClawPluginApi;
+
     setGeweRuntime(api.runtime);
     api.registerChannel({ plugin: gewePlugin });
+
+    if (compatApi.registrationMode && compatApi.registrationMode !== "full") {
+      return;
+    }
+
     api.registerTool((ctx) => createGeweApiTools(ctx));
     api.registerTool((ctx) => createGeweSyncGroupBindingTool(ctx));
     api.registerTool((ctx) => createGeweIssueGroupClaimCodeTool(ctx));

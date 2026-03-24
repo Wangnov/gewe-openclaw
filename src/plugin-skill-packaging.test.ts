@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 
 const rootDir = path.resolve(import.meta.dirname, "..");
 
@@ -19,6 +20,39 @@ test("package publish whitelist includes skills directory", () => {
   };
 
   assert.ok(pkg.files?.includes("skills/**"));
+});
+
+test("package publish whitelist includes setup entry", () => {
+  const pkg = JSON.parse(fs.readFileSync(path.join(rootDir, "package.json"), "utf-8")) as {
+    files?: string[];
+  };
+
+  assert.ok(pkg.files?.includes("setup-entry.ts"));
+});
+
+test("package metadata declares setup entry for modern OpenClaw channel loading", () => {
+  const pkg = JSON.parse(fs.readFileSync(path.join(rootDir, "package.json"), "utf-8")) as {
+    openclaw?: {
+      setupEntry?: string;
+    };
+  };
+
+  assert.equal(pkg.openclaw?.setupEntry, "./setup-entry.ts");
+});
+
+test("setup entry exports a channel plugin registration surface", async () => {
+  const mod = (await import(pathToFileURL(path.join(rootDir, "setup-entry.ts")).href)) as {
+    default?: {
+      plugin?: Record<string, unknown> & {
+        id?: string;
+      };
+    };
+  };
+
+  assert.equal(mod.default?.plugin?.id, "gewe-openclaw");
+  assert.equal("gateway" in (mod.default?.plugin ?? {}), false);
+  assert.equal("outbound" in (mod.default?.plugin ?? {}), false);
+  assert.equal("actions" in (mod.default?.plugin ?? {}), false);
 });
 
 test("gewe channel rules skill exists with expected core guidance", () => {

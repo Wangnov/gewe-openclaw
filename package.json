@@ -10,6 +10,7 @@
   },
   "files": [
     "index.ts",
+    "setup-entry.ts",
     "openclaw.plugin.json",
     "assets/gewe-rs_logo.jpeg",
     "skills/**",
@@ -20,6 +21,7 @@
     "extensions": [
       "./index.ts"
     ],
+    "setupEntry": "./setup-entry.ts",
     "channel": {
       "id": "gewe-openclaw",
       "label": "GeWe",
