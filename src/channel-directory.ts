@@ -1,5 +1,3 @@
-import type { ChannelDirectoryAdapter, ChannelDirectoryEntry } from "openclaw/plugin-sdk/channel-runtime";
-
 import { resolveGeweAccount } from "./accounts.js";
 import {
   fetchContactsListCacheGewe,
@@ -14,7 +12,12 @@ import {
   normalizeGeweBindingConversationId,
 } from "./group-binding.js";
 import { normalizeGeweMessagingTarget } from "./normalize.js";
-import { normalizeAccountId, type OpenClawConfig } from "./openclaw-compat.js";
+import {
+  normalizeAccountId,
+  type ChannelDirectoryAdapter,
+  type ChannelDirectoryEntry,
+  type OpenClawConfig,
+} from "./openclaw-compat.js";
 import type { CoreConfig } from "./types.js";
 import {
   listCachedGeweGroups,

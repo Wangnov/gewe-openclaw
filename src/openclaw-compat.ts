@@ -23,6 +23,17 @@ export type {
   RuntimeEnv,
   WizardPrompter,
 };
+export type { AnyAgentTool, OpenClawPluginToolContext } from "openclaw/plugin-sdk";
+export type {
+  ChannelAllowlistAdapter,
+  ChannelDirectoryAdapter,
+  ChannelDirectoryEntry,
+  ChannelMessageActionAdapter,
+  ChannelMessageActionName,
+  ChannelMessageToolSchemaContribution,
+  ChannelStatusAdapter,
+  ChannelStatusIssue,
+} from "openclaw/plugin-sdk/channel-runtime";
 
 export const DEFAULT_ACCOUNT_ID = "default";
 export const DEFAULT_WEBHOOK_MAX_BODY_BYTES = 1024 * 1024;

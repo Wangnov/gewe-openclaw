@@ -3,7 +3,7 @@ import type {
   ChannelMessageActionAdapter,
   ChannelMessageActionName,
   ChannelMessageToolSchemaContribution,
-} from "openclaw/plugin-sdk/channel-runtime";
+} from "./openclaw-compat.js";
 
 import { listEnabledGeweAccounts, resolveGeweAccount } from "./accounts.js";
 import { deliverGewePayload } from "./delivery.js";

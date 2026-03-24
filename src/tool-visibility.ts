@@ -1,4 +1,4 @@
-import type { OpenClawPluginToolContext } from "openclaw/plugin-sdk";
+import type { OpenClawPluginToolContext } from "./openclaw-compat.js";
 
 import { CHANNEL_ALIASES, CHANNEL_ID } from "./constants.js";
 

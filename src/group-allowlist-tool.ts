@@ -1,10 +1,15 @@
-import type { AnyAgentTool, OpenClawPluginToolContext } from "openclaw/plugin-sdk";
 import { z } from "zod";
 
 import { resolveGeweAccount } from "./accounts.js";
 import { ensureGeweWriteSection } from "./config-edit.js";
 import { normalizeGeweBindingConversationId, inferCurrentGeweGroupId } from "./group-binding.js";
-import { buildJsonSchema, normalizeAccountId, type OpenClawConfig } from "./openclaw-compat.js";
+import {
+  buildJsonSchema,
+  normalizeAccountId,
+  type AnyAgentTool,
+  type OpenClawConfig,
+  type OpenClawPluginToolContext,
+} from "./openclaw-compat.js";
 import { shouldExposeGeweAgentTool } from "./tool-visibility.js";
 import type { GeweGroupConfig } from "./types.js";
 

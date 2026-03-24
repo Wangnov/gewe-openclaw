@@ -1,11 +1,13 @@
-import type { ChannelAllowlistAdapter } from "openclaw/plugin-sdk/channel-runtime";
-
 import { resolveGeweAccount } from "./accounts.js";
 import { collectKnownGeweGroupEntries } from "./channel-directory.js";
 import { cleanupEmptyObject, ensureGeweWriteSectionInPlace } from "./config-edit.js";
 import { CHANNEL_CONFIG_KEY, stripChannelPrefix } from "./constants.js";
 import { normalizeGeweMessagingTarget } from "./normalize.js";
-import { normalizeAccountId, type OpenClawConfig } from "./openclaw-compat.js";
+import {
+  normalizeAccountId,
+  type ChannelAllowlistAdapter,
+  type OpenClawConfig,
+} from "./openclaw-compat.js";
 import type { CoreConfig } from "./types.js";
 import { resolveCachedGeweName } from "./directory-cache.js";
 

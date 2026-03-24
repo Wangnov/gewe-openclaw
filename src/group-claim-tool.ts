@@ -1,8 +1,12 @@
-import type { AnyAgentTool, OpenClawPluginToolContext } from "openclaw/plugin-sdk";
 import { z } from "zod";
 
 import { normalizeGeweMessagingTarget } from "./normalize.js";
-import { buildJsonSchema, normalizeAccountId } from "./openclaw-compat.js";
+import {
+  buildJsonSchema,
+  normalizeAccountId,
+  type AnyAgentTool,
+  type OpenClawPluginToolContext,
+} from "./openclaw-compat.js";
 import { issueGeweGroupClaimCode } from "./pairing-store.js";
 import { shouldExposeGeweAgentTool } from "./tool-visibility.js";
 

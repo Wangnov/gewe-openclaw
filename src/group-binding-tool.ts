@@ -1,4 +1,3 @@
-import type { AnyAgentTool, OpenClawPluginToolContext } from "openclaw/plugin-sdk";
 import { z } from "zod";
 
 import {
@@ -15,7 +14,13 @@ import {
   resolveGeweBindingIdentityConfigForGroup,
   resolveGeweCurrentSelfNickname,
 } from "./group-binding.js";
-import { buildJsonSchema, normalizeAccountId, type OpenClawConfig } from "./openclaw-compat.js";
+import {
+  buildJsonSchema,
+  normalizeAccountId,
+  type AnyAgentTool,
+  type OpenClawConfig,
+  type OpenClawPluginToolContext,
+} from "./openclaw-compat.js";
 import { shouldExposeGeweAgentTool } from "./tool-visibility.js";
 
 const GeweSyncGroupBindingToolSchema = z

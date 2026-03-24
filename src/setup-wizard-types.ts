@@ -3,7 +3,7 @@ import type {
   ChannelSetupInput,
   OpenClawConfig,
   WizardPrompter,
-} from "openclaw/plugin-sdk";
+} from "./openclaw-compat.js";
 
 type SetupCredentialValues = Partial<Record<string, string>>;
 

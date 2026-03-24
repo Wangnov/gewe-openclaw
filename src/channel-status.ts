@@ -1,12 +1,15 @@
-import type { ChannelStatusAdapter, ChannelStatusIssue } from "openclaw/plugin-sdk/channel-runtime";
-
 import type { ResolvedGeweAccount } from "./accounts.js";
 import { collectKnownGeweGroupEntries, collectKnownGewePeerEntries } from "./channel-directory.js";
 import { getGeweDirectoryCacheCounts } from "./directory-cache.js";
 import { CHANNEL_CONFIG_KEY } from "./constants.js";
 import { getGeweProfile } from "./group-binding.js";
 import { normalizeGeweBindingConversationId } from "./group-binding.js";
-import { normalizeAccountId, type OpenClawConfig } from "./openclaw-compat.js";
+import {
+  normalizeAccountId,
+  type ChannelStatusAdapter,
+  type ChannelStatusIssue,
+  type OpenClawConfig,
+} from "./openclaw-compat.js";
 import { readGeweAllowFromStore } from "./pairing-store.js";
 
 type GeweStatusProbe = {

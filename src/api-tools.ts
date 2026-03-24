@@ -1,4 +1,3 @@
-import type { AnyAgentTool, OpenClawPluginToolContext } from "openclaw/plugin-sdk";
 import { z } from "zod";
 
 import { resolveGeweAccount } from "./accounts.js";
@@ -65,7 +64,13 @@ import {
   uploadSnsVideoGewe,
 } from "./moments-api.js";
 import { normalizeGeweMessagingTarget } from "./normalize.js";
-import { buildJsonSchema, normalizeAccountId, type OpenClawConfig } from "./openclaw-compat.js";
+import {
+  buildJsonSchema,
+  normalizeAccountId,
+  type AnyAgentTool,
+  type OpenClawConfig,
+  type OpenClawPluginToolContext,
+} from "./openclaw-compat.js";
 import {
   getProfileGewe,
   getQrCodeGewe,

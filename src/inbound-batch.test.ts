@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import type { OpenClawConfig } from "openclaw/plugin-sdk";
+import type { OpenClawConfig } from "./openclaw-compat.js";
 
 import type { GeweInboundMessage } from "./types.js";
 import {
