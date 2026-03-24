@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2026.3.27] - 2026-03-24
+
+### Added
+
+- 新增 `setup-entry.ts` 轻量入口，支持新版 OpenClaw 在 `setup-only` / `setup-runtime` 模式下加载 GeWe 的 setup surface。
+- 新增 OpenClaw 升级兼容公告，说明新版宿主升级路径、状态目录边界和兼容取舍。
+
+### Changed
+
+- GeWe 插件入口现已跟进新版 OpenClaw 的 `registrationMode` 加载模型：在 `full` 模式下注册完整通道与工具，在 setup 模式下仅注册 channel surface。
+- GeWe setup 所需的 `meta`、`config`、`setupWizard` 与 setup adapter 已拆到轻量 channel surface，减少 onboarding 和 disabled/unconfigured channel 场景的运行时负担。
+- OpenClaw SDK 类型导入已统一收口到兼容层，降低后续上游 SDK 子入口调整时的维护成本。
+
+### Fixed
+
+- 修复新版 OpenClaw 在 setup-only 加载通道插件时仍可能提前拉起完整 GeWe 运行时的问题。
+- 修复外部插件在继续兼容旧版 OpenClaw 宿主时，入口层难以同时适配新版 `setupEntry` 与旧版根入口行为的问题。
+
 ## [2026.3.26] - 2026-03-20
 
 ### Added
